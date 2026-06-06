@@ -42,21 +42,24 @@ class _FakeClient:
         self.final_status = final_status
 
     def get_evaluation(self, job_id):
-        return EvaluationJob(id=job_id, model_version_id="mv", status=self.final_status,
-                             metrics={"accuracy": 1.0})
+        return EvaluationJob(
+            id=job_id, model_version_id="mv", status=self.final_status, metrics={"accuracy": 1.0}
+        )
 
 
 def test_evaluation_wait_success():
-    job = EvaluationJob(id="j1", model_version_id="mv", status="running",
-                        _client=_FakeClient("completed"))
+    job = EvaluationJob(
+        id="j1", model_version_id="mv", status="running", _client=_FakeClient("completed")
+    )
     result = job.wait(timeout=5, poll_interval=0.01)
     assert result.status == "completed"
     assert result.metrics == {"accuracy": 1.0}
 
 
 def test_evaluation_wait_failure_raises():
-    job = EvaluationJob(id="j2", model_version_id="mv", status="running",
-                        _client=_FakeClient("failed"))
+    job = EvaluationJob(
+        id="j2", model_version_id="mv", status="running", _client=_FakeClient("failed")
+    )
     with pytest.raises(EvaluationFailedError):
         job.wait(timeout=5, poll_interval=0.01)
 

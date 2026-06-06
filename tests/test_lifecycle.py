@@ -34,4 +34,4 @@ def test_archived_is_terminal():
 
 
 def test_deployable_states():
-    assert DEPLOYABLE == {STAGING, PRODUCTION}
+    assert {STAGING, PRODUCTION} == DEPLOYABLE

@@ -71,7 +71,7 @@ def promote_version(model_name: str, version: int, req: PromoteRequest) -> Model
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model version not found")
     if not can_transition(target.status, req.target_status):
         exc = InvalidTransition(target.status, req.target_status)
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
     with store.lock:
         target.status = req.target_status
     return _to_response(target)

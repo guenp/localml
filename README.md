@@ -1,5 +1,7 @@
 # localml
 
+[![CI](https://github.com/guenp/localml/actions/workflows/ci.yml/badge.svg)](https://github.com/guenp/localml/actions/workflows/ci.yml)
+
 A **local ML experimentation platform demo** that runs entirely on an Apple Silicon
 workstation. It demonstrates the core architecture of a production ML platform at local
 scale: a Python SDK, framework adapters, experiment tracking, a model registry, artifact
@@ -25,7 +27,7 @@ localml/
 │   ├── api/              # FastAPI control plane
 │   ├── worker/           # Redis-backed evaluation worker
 │   └── mlflow/           # MLflow tracking + registry image
-├── docs/design.md        # Software Design Document
+├── docs/                 # Zensical documentation site and design document
 ├── docker-compose.yml    # Local stack: api, worker, postgres, redis, minio, mlflow, serving
 └── tests/
 ```
@@ -111,13 +113,22 @@ localml runs get <run_id>
 
 ## Development
 
+Uses [`uv`](https://docs.astral.sh/uv/) for Python and dependency management; `uv.lock` is
+canonical and CI runs with `UV_FROZEN=true`.
+
 ```bash
-uv sync --all-extras
-make lint         # ruff
-make typecheck    # mypy
-make test         # pytest
-make fmt          # ruff format
+uv sync
+pre-commit install
+
+uv run pytest               # tests with coverage
+uv run ruff check           # lint
+uv run ruff format --check  # format check
+uv run ty check src/        # type check
+uv run zensical serve       # live-preview the docs
 ```
+
+Docs are authored in `docs/` and built with [Zensical](https://zensical.org);
+`docs.yml` deploys them to GitHub Pages on every push to `main`.
 
 ## Model lifecycle
 
@@ -128,4 +139,4 @@ created → candidate → staging → production → deprecated → archived
 
 ## License
 
-MIT (demo project).
+MIT. See [LICENSE](LICENSE).

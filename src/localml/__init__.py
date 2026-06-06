@@ -10,8 +10,7 @@ Public API::
         ml.log_metrics({"accuracy": 0.91})
         ml.log_artifact("outputs/model.safetensors")
         version = ml.mlx.log_model(name="assistant", model_dir="./model")
-        job = ml.evaluate(model=version, dataset="datasets/eval.jsonl",
-                          metrics=["accuracy"])
+        job = ml.evaluate(model=version, dataset="datasets/eval.jsonl", metrics=["accuracy"])
         job.wait()
         ml.deploy(model=version, target="local")
 """
@@ -34,35 +33,30 @@ from .run import start_run
 from .types import Deployment, EvaluationJob, ModelVersion, Run
 
 __all__ = [
-    # configuration
+    "ArtifactUploadError",
+    "AuthenticationError",
     "Config",
+    "Deployment",
+    "DeploymentError",
+    "EvaluationFailedError",
+    "EvaluationJob",
+    "LocalMLError",
+    "ModelRegistrationError",
+    "ModelVersion",
+    "Run",
+    "ValidationError",
     "configure",
-    # run lifecycle
-    "start_run",
+    "deploy",
+    "evaluate",
+    "huggingface",
+    "jax",
+    "log_artifact",
     "log_metrics",
     "log_params",
-    "log_artifact",
-    "register_model",
-    "evaluate",
-    "deploy",
-    # types
-    "Run",
-    "ModelVersion",
-    "EvaluationJob",
-    "Deployment",
-    # framework adapters
-    "torch",
-    "jax",
     "mlx",
-    "huggingface",
-    # exceptions
-    "LocalMLError",
-    "AuthenticationError",
-    "ValidationError",
-    "ArtifactUploadError",
-    "ModelRegistrationError",
-    "EvaluationFailedError",
-    "DeploymentError",
+    "register_model",
+    "start_run",
+    "torch",
 ]
 
 __version__ = "0.1.0"

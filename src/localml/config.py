@@ -17,6 +17,7 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import SupportsFloat, SupportsIndex
 
 DEFAULT_API_URL = "http://localhost:8000"
 CONFIG_PATH = Path.home() / ".localml" / "config.toml"
@@ -40,6 +41,18 @@ def _load_file(path: Path = CONFIG_PATH) -> dict[str, object]:
         return {}
     with path.open("rb") as fh:
         return tomllib.load(fh)
+
+
+def _float_config(value: object, default: float) -> float:
+    if isinstance(value, str | bytes | bytearray | SupportsFloat | SupportsIndex):
+        return float(value)
+    return default
+
+
+def _int_config(value: object, default: int) -> int:
+    if isinstance(value, str | bytes | bytearray | SupportsIndex):
+        return int(value)
+    return default
 
 
 def configure(
@@ -68,9 +81,9 @@ def configure(
             or os.environ.get("LOCALML_API_TOKEN")
             or (str(file_cfg["token"]) if "token" in file_cfg else None)
         ),
-        timeout=timeout if timeout is not None else float(file_cfg.get("timeout", 30.0)),  # type: ignore[arg-type]
+        timeout=timeout if timeout is not None else _float_config(file_cfg.get("timeout"), 30.0),
         max_retries=(
-            max_retries if max_retries is not None else int(file_cfg.get("max_retries", 3))  # type: ignore[arg-type]
+            max_retries if max_retries is not None else _int_config(file_cfg.get("max_retries"), 3)
         ),
     )
     _active = cfg

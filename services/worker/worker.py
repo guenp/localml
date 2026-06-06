@@ -35,10 +35,10 @@ def handle(payload: dict) -> None:
     log.info("picked up evaluation job %s", job_id)
     # TODO(phase3): mark status=running in Postgres; resolve artifacts from MinIO.
     try:
-        metrics, report_uri = run_evaluation(payload)
+        metrics, _report_uri = run_evaluation(payload)
         log.info("job %s completed: %s", job_id, metrics)
         # TODO(phase3): log metrics to MLflow; update status=completed + report_uri in DB.
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.exception("job %s failed: %s", job_id, exc)
         # TODO(phase3): mark status=failed with traceback summary; bounded retry.
 
@@ -47,7 +47,7 @@ def main() -> None:
     log.info("worker starting; consuming %s from %s", EVAL_QUEUE, REDIS_URL)
     try:
         client = _connect()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.error("could not connect to redis (%s); idling", exc)
         while True:
             time.sleep(5)

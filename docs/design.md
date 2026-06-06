@@ -2,7 +2,7 @@
 
 > Version 0.1 — 2026-06-05. This is the source design for the `localml` scaffold. The
 > current codebase implements interfaces and a runnable in-memory control plane; see
-> [`../ROADMAP.md`](../ROADMAP.md) for the path to full functionality.
+> `ROADMAP.md` in the repository root for the path to full functionality.
 
 ## 1. Introduction
 

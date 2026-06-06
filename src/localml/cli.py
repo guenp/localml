@@ -43,19 +43,19 @@ def config(
 def health() -> None:
     """Check control-plane health."""
     client = get_client()
-    _echo(client._request("GET", "/health"))  # noqa: SLF001 — intentional in CLI
+    _echo(client._request("GET", "/health"))
 
 
 @runs_app.command("get")
 def runs_get(run_id: str) -> None:
     """Fetch a run by id."""
-    _echo(get_client()._request("GET", f"/runs/{run_id}"))  # noqa: SLF001
+    _echo(get_client()._request("GET", f"/runs/{run_id}"))
 
 
 @models_app.command("get")
 def models_get(name: str) -> None:
     """Fetch a model and its versions by name."""
-    _echo(get_client()._request("GET", f"/models/{name}"))  # noqa: SLF001
+    _echo(get_client()._request("GET", f"/models/{name}"))
 
 
 if __name__ == "__main__":

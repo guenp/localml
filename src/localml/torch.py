@@ -25,8 +25,9 @@ def log_model(
 
     Example::
 
-        ml.torch.log_model(model=model, name="classifier", example_input=batch,
-                           metadata={"architecture": "resnet"})
+        ml.torch.log_model(
+            model=model, name="classifier", example_input=batch, metadata={"architecture": "resnet"}
+        )
 
     Scaffold note: real ``state_dict`` serialization and schema inference land in Phase 2.
     """

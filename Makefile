@@ -1,19 +1,25 @@
-.PHONY: install lint fmt typecheck test up down logs seed reset
+.PHONY: install lint fmt format-check typecheck docs test up down logs seed reset
 
 install:
-	uv sync --all-extras
+	uv sync
 
 lint:
-	ruff check .
+	uv run ruff check
 
 fmt:
-	ruff format .
+	uv run ruff format
+
+format-check:
+	uv run ruff format --check
 
 typecheck:
-	mypy
+	uv run ty check src/
+
+docs:
+	uv run zensical build
 
 test:
-	pytest
+	uv run pytest
 
 up:
 	docker compose up -d
@@ -25,7 +31,7 @@ logs:
 	docker compose logs -f
 
 seed:
-	python scripts/seed.py
+	uv run python scripts/seed.py
 
 reset:
-	python scripts/reset.py
+	uv run python scripts/reset.py

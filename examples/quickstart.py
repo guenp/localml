@@ -49,12 +49,12 @@ def main() -> None:
 
         # Promote so the version becomes deployable, then deploy locally.
         client = get_client()
-        client._request(  # noqa: SLF001
+        client._request(
             "POST",
             f"/models/{version.model_name}/versions/{version.version}/promote",
             json={"target_status": "candidate"},
         )
-        client._request(  # noqa: SLF001
+        client._request(
             "POST",
             f"/models/{version.model_name}/versions/{version.version}/promote",
             json={"target_status": "staging"},

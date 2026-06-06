@@ -27,8 +27,13 @@ def log_checkpoint(
 
     Example::
 
-        ml.jax.log_checkpoint(name="ranker", params=params, state=train_state,
-                              config=config, checkpoint_format="orbax")
+        ml.jax.log_checkpoint(
+            name="ranker",
+            params=params,
+            state=train_state,
+            config=config,
+            checkpoint_format="orbax",
+        )
 
     Scaffold note: real Orbax serialization + sharding capture land in Phase 2.
     """

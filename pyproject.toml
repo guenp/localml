@@ -2,10 +2,24 @@
 name = "localml"
 version = "0.1.0"
 description = "Local ML experimentation platform demo SDK and control plane"
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
 authors = [{ name = "Guenevere Prawiroatmodjo" }]
+keywords = ["machine-learning", "mlops", "local-development", "sdk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
 dependencies = [
     "httpx>=0.27",
     "pydantic>=2.6",
@@ -23,15 +37,35 @@ api = [
     "boto3>=1.34",
     "mlflow>=2.12",
 ]
-dev = [
-    "pytest>=8.0",
-    "pytest-cov>=5.0",
-    "ruff>=0.4",
-    "mypy>=1.10",
-]
+
+[project.urls]
+Homepage = "https://github.com/guenp/localml"
+Documentation = "https://guenp.github.io/localml/"
+Repository = "https://github.com/guenp/localml"
+Changelog = "https://github.com/guenp/localml/blob/main/CHANGELOG.md"
+Issues = "https://github.com/guenp/localml/issues"
 
 [project.scripts]
 localml = "localml.cli:app"
+
+# PEP 735 dependency groups — dev tooling that is NOT a runtime dependency.
+[dependency-groups]
+dev = [
+    "alembic>=1.13",
+    "boto3>=1.34",
+    "fastapi>=0.110",
+    "httpx2>=2.0",
+    "mlflow>=2.12",
+    "psycopg[binary]>=3.1",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "redis>=5.0",
+    "ruff>=0.6",
+    "sqlalchemy>=2.0",
+    "ty",
+    "uvicorn[standard]>=0.29",
+    "zensical",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -41,22 +75,42 @@ build-backend = "hatchling.build"
 packages = ["src/localml"]
 
 [tool.ruff]
-line-length = 100
 target-version = "py311"
+line-length = 100
 src = ["src", "services", "tests"]
 
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "W"]
+[tool.ruff.format]
+docstring-code-format = true
 
-[tool.mypy]
-python_version = "3.11"
-strict = true
-ignore_missing_imports = true
-files = ["src", "tests"]
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["localml"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["RUF012"]
+"services/**" = ["B008"]
+
+[tool.ty.environment]
+python-version = "3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+xfail_strict = true
+filterwarnings = ["error"]
+addopts = "--tb=short --cov=localml --cov-report=term-missing"
 
 [tool.coverage.run]
 source = ["localml"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@overload",
+    'if __name__ == "__main__":',
+]
