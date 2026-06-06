@@ -32,12 +32,17 @@ localml/
 
 ## Architecture (at a glance)
 
-```
-SDK / CLI / Notebook ──► FastAPI control plane ──► MLflow (tracking + registry)
-                                │                   Postgres (metadata)
-                                │                   MinIO (artifacts)
-                                │                   Redis (job queue) ──► Worker
-                                └──► Local inference service (Ollama / MLX)
+```mermaid
+flowchart LR
+    User[SDK / CLI / Notebook] --> API[FastAPI control plane]
+    API --> MLflow[MLflow<br/>tracking + registry]
+    API --> DB[(Postgres<br/>metadata)]
+    API --> Store[(MinIO<br/>artifacts)]
+    API --> Queue[Redis<br/>job queue]
+    API --> Serving[Local inference<br/>Ollama / MLX]
+    Queue --> Worker[Worker]
+    Worker --> Store
+    Worker --> DB
 ```
 
 The control plane (Postgres) is the source of truth for platform metadata. MLflow holds
