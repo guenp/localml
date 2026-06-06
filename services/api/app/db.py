@@ -1,0 +1,175 @@
+"""SQLAlchemy ORM models — the Postgres schema (source of truth for platform metadata).
+
+This mirrors Section 5 of the design doc. The scaffold's routers currently use an
+in-memory store (:mod:`app.store`); wiring these models in via a repository layer + Alembic
+migrations is Phase 1 on the roadmap.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+def _uuid() -> str:
+    return str(uuid.uuid4())
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    username: Mapped[str] = mapped_column(Text, unique=True)
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Project(Base):
+    __tablename__ = "projects"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(Text, unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    runs: Mapped[list[Run]] = relationship(back_populates="project")
+    models: Mapped[list[Model]] = relationship(back_populates="project")
+
+
+class Run(Base):
+    __tablename__ = "runs"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    mlflow_run_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    project: Mapped[Project] = relationship(back_populates="runs")
+
+
+class Metric(Base):
+    __tablename__ = "metrics"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    value: Mapped[float] = mapped_column(Float)
+    step: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Param(Base):
+    __tablename__ = "params"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    value: Mapped[str] = mapped_column(Text)
+
+
+class Artifact(Base):
+    __tablename__ = "artifacts"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    uri: Mapped[str] = mapped_column(Text)
+    artifact_type: Mapped[str] = mapped_column(Text)
+    checksum: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Model(Base):
+    __tablename__ = "models"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_model_project_name"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    project: Mapped[Project] = relationship(back_populates="models")
+    versions: Mapped[list[ModelVersion]] = relationship(back_populates="model")
+
+
+class ModelVersion(Base):
+    __tablename__ = "model_versions"
+    __table_args__ = (UniqueConstraint("model_id", "version", name="uq_version_model"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    model_id: Mapped[str] = mapped_column(ForeignKey("models.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    framework: Mapped[str] = mapped_column(Text)
+    artifact_uri: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    model: Mapped[Model] = relationship(back_populates="versions")
+
+
+class Dataset(Base):
+    __tablename__ = "datasets"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    version: Mapped[str] = mapped_column(Text)
+    artifact_uri: Mapped[str] = mapped_column(Text)
+    meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class EvaluationJob(Base):
+    __tablename__ = "evaluation_jobs"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    model_version_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id"), index=True)
+    dataset_id: Mapped[str | None] = mapped_column(ForeignKey("datasets.id"), nullable=True)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    report_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class EvaluationMetric(Base):
+    __tablename__ = "evaluation_metrics"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    evaluation_job_id: Mapped[str] = mapped_column(ForeignKey("evaluation_jobs.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    value: Mapped[float] = mapped_column(Float)
+
+
+class Deployment(Base):
+    __tablename__ = "deployments"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    model_version_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id"), index=True)
+    target: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    endpoint_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    action: Mapped[str] = mapped_column(Text)
+    resource_type: Mapped[str] = mapped_column(Text)
+    resource_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
