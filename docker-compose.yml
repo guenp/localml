@@ -1,0 +1,65 @@
+services:
+  api:
+    build: ./services/api
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+      - minio
+      - mlflow
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build: ./services/worker
+    env_file: .env
+    depends_on:
+      - redis
+      - postgres
+      - minio
+      - mlflow
+
+  postgres:
+    image: postgres:16
+    env_file: .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    env_file: .env
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  mlflow:
+    build: ./services/mlflow
+    env_file: .env
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - minio
+
+  serving:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  pgdata:
+  miniodata:
+  ollama:
