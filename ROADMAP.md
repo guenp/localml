@@ -7,8 +7,8 @@ The **inference/eval loop** (prompt → predict over a dataset → store outputs
 compare → iterate) is a first-class workflow, folded into Phases 1, 3, and 4 below rather
 than bolted on as a parallel subsystem. Three corrections from design review are baked in:
 
-- **Datasets, `name:version` resolution, and a namespaced client don't exist yet** — they
-  are prerequisites (Phase 1), not integrations.
+- **Datasets, `name:version` resolution, and a namespaced client are Phase 1
+  prerequisites**, not later integrations.
 - **Prediction and evaluation are separate jobs.** Inference runs once and outputs are
   stored as a JSONL artifact; evaluation scores those stored outputs and can re-run without
   re-inferring. The schema change is additive (new `prediction_jobs` table; the existing
@@ -27,18 +27,26 @@ than bolted on as a parallel subsystem. Three corrections from design review are
 
 ## Phase 1 — Control plane core (foundations)
 
-- [ ] Postgres schema via SQLAlchemy models + Alembic migrations.
-- [ ] Repository layer (projects, runs, metrics, params, artifacts, models, versions).
-- [ ] Wire MLflow client into run + model-version creation.
-- [ ] MinIO artifact upload (direct or pre-signed URL flow).
-- [ ] Lifecycle state machine with validated transitions and 409/422 errors.
-- [ ] Idempotency keys for create operations.
+- [x] Postgres schema via SQLAlchemy models + Alembic migrations.
+- [ ] Durable SQLAlchemy repository layer for projects, runs, metrics, params, artifacts,
+      models, versions, datasets, and idempotency records. Current branch has process-local
+      repository helpers for API behavior and tests.
+- [ ] Wire MLflow client into run + model-version creation. Current branch has an optional,
+      defensive run-creation hook; model-version registration still needs real MLflow
+      integration.
+- [ ] MinIO artifact upload (direct or pre-signed URL flow). Current branch has optional
+      pre-signing plumbing; the API still needs a client-facing upload contract.
+- [x] Lifecycle state machine with validated transitions and 409/422 errors.
+- [ ] Idempotency keys for all create operations. Current branch covers projects, runs,
+      model versions, and datasets; evaluations and deployments remain.
 - [ ] Seed script: default local user + project + reset for local development.
 - [ ] **Dataset registry** — `POST /datasets` / `GET /datasets/{name}` + SDK
       (`ml.datasets.register/get`), JSONL upload to MinIO, **stable per-row `example_id`s**
-      (required for later comparison).
+      (required for later comparison). Current branch covers the API, SDK namespace, and
+      stable `example_id`s; JSONL upload to MinIO remains.
 - [ ] **`name:version` resolution** (e.g. `local-assistant:v1`) shared by models, datasets,
-      and prompts; resolves to canonical ids server-side.
+      and prompts; resolves to canonical ids server-side. Current branch covers models and
+      datasets; prompts remain for Phase 3.
 
 ## Phase 2 — SDK end-to-end
 
