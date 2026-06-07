@@ -1,7 +1,7 @@
 [project]
 name = "localml"
 version = "0.1.0"
-description = "Local ML experimentation platform demo SDK and control plane"
+description = "Local ML experimentation platform SDK and control plane"
 license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"

@@ -21,7 +21,7 @@ from .exceptions import (
     ModelRegistrationError,
     ValidationError,
 )
-from .types import Deployment, EvaluationJob, ModelVersion, Run
+from .types import Dataset, Deployment, EvaluationJob, ModelVersion, Run
 
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
@@ -127,6 +127,56 @@ class Client:
             artifact_uri=data["artifact_uri"],
             status=data.get("status", "created"),
         )
+
+    # -- datasets ---------------------------------------------------------------
+
+    def register_dataset(
+        self,
+        *,
+        project: str,
+        name: str,
+        artifact_uri: str,
+        rows: list[dict[str, Any]] | None = None,
+        version: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Dataset:
+        data = self._request(
+            "POST",
+            "/datasets",
+            idempotent=True,
+            json={
+                "project": project,
+                "name": name,
+                "artifact_uri": artifact_uri,
+                "version": version,
+                "rows": rows,
+                "metadata": metadata or {},
+            },
+        )
+        return Dataset(
+            id=data["id"],
+            project=data["project"],
+            name=data["name"],
+            version=data["version"],
+            artifact_uri=data["artifact_uri"],
+            row_count=data["row_count"],
+            example_ids=data.get("example_ids", []),
+        )
+
+    def get_datasets(self, name: str) -> list[Dataset]:
+        data = self._request("GET", f"/datasets/{name}")
+        return [
+            Dataset(
+                id=item["id"],
+                project=item["project"],
+                name=item["name"],
+                version=item["version"],
+                artifact_uri=item["artifact_uri"],
+                row_count=item["row_count"],
+                example_ids=item.get("example_ids", []),
+            )
+            for item in data
+        ]
 
     # -- evaluations -------------------------------------------------------------
 

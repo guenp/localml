@@ -10,14 +10,14 @@ import logging
 from fastapi import Depends, FastAPI
 
 from .auth import require_auth
-from .routers import deployments, evaluations, models, projects, runs
+from .routers import datasets, deployments, evaluations, models, projects, resolve, runs
 
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(
     title="localml control plane",
     version="0.1.0",
-    description="Local ML experimentation platform control plane (scaffold).",
+    description="Local ML experimentation platform control plane.",
 )
 
 
@@ -31,5 +31,7 @@ _protected = [Depends(require_auth)]
 app.include_router(projects.router, dependencies=_protected)
 app.include_router(runs.router, dependencies=_protected)
 app.include_router(models.router, dependencies=_protected)
+app.include_router(datasets.router, dependencies=_protected)
 app.include_router(evaluations.router, dependencies=_protected)
 app.include_router(deployments.router, dependencies=_protected)
+app.include_router(resolve.router, dependencies=_protected)

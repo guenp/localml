@@ -1,7 +1,7 @@
 # Roadmap
 
 High-level implementation steps beyond the initial scaffold. Items are roughly ordered but
-not strictly sequential. The MVP target is a coherent local demo on Apple Silicon.
+not strictly sequential. The MVP target is a coherent local workflow on Apple Silicon.
 
 The **inference/eval loop** (prompt → predict over a dataset → store outputs → score →
 compare → iterate) is a first-class workflow, folded into Phases 1, 3, and 4 below rather
@@ -33,7 +33,7 @@ than bolted on as a parallel subsystem. Three corrections from design review are
 - [ ] MinIO artifact upload (direct or pre-signed URL flow).
 - [ ] Lifecycle state machine with validated transitions and 409/422 errors.
 - [ ] Idempotency keys for create operations.
-- [ ] Seed script: default local user + demo project + reset for demos.
+- [ ] Seed script: default local user + project + reset for local development.
 - [ ] **Dataset registry** — `POST /datasets` / `GET /datasets/{name}` + SDK
       (`ml.datasets.register/get`), JSONL upload to MinIO, **stable per-row `example_id`s**
       (required for later comparison).

@@ -1,4 +1,4 @@
-# Software Design Document: Local ML Experimentation Platform Demo
+# Software Design Document: Local ML Experimentation Platform
 
 > Version 0.1 — 2026-06-05. This is the source design for the `localml` scaffold. The
 > current codebase implements interfaces and a runnable in-memory control plane; see
@@ -8,8 +8,8 @@
 
 ### Purpose
 
-A local ML experimentation platform demo that runs on an Apple Silicon workstation (e.g. an
-M-series Mac with large unified memory). It demonstrates the core architecture of a
+A local ML experimentation platform that runs on an Apple Silicon workstation (e.g. an
+M-series Mac with large unified memory). It implements the core architecture of a
 production ML platform at local scale: Python SDK, framework adapters, experiment tracking,
 model registry, artifact storage, evaluation jobs, and local model serving — showing how ML
 practitioners move from experimentation to registration, evaluation, and local deployment
@@ -64,7 +64,8 @@ artifacts.
    models, evaluations, deployments, jobs.
 4. **Local reproducibility** — entire system via Docker Compose, local services.
 5. **Extensibility** — add adapters, serving backends, evaluation types without redesign.
-6. **Demo clarity** — show architecture, SDK design, backend APIs, lifecycle thinking.
+6. **Operational clarity** — make architecture, SDK design, backend APIs, and lifecycle
+   behavior easy to inspect.
 
 ### System context
 
@@ -207,7 +208,7 @@ Public API:
 ```python
 import localml as ml
 
-with ml.start_run(project="demo", config={"lr": 0.001}) as run:
+with ml.start_run(project="local", config={"lr": 0.001}) as run:
     ml.log_metrics({"accuracy": 0.91})
     ml.log_artifact("outputs/model.safetensors")
     version = ml.mlx.log_model(name="local-assistant", model_dir="./model",
@@ -304,7 +305,7 @@ Tables: `users`, `projects`, `runs`, `metrics`, `params`, `artifacts`, `models`,
 `services/api/app/db.py`.
 
 Migrations: Alembic; additive where possible; avoid destructive changes in MVP; seed a
-default local user + demo project; provide a reset script.
+default local user and project; provide a reset script.
 
 ## 6. External Interfaces
 
@@ -316,7 +317,7 @@ unified memory, Metal/MLX runtime, local Docker volumes.
 ## 7. Security Considerations
 
 MVP: local dev bearer token in `~/.localml/config.toml`; default local mode may bypass
-auth for demos. Single-user / simple project-ownership authorization. Local-only data in
+auth for local development. Single-user / simple project-ownership authorization. Local-only data in
 MinIO/Postgres volumes. No formal compliance target.
 
 Future: OIDC, mTLS service-to-service, fine-grained RBAC (viewer/contributor/maintainer/
@@ -334,9 +335,9 @@ scheduling.
 
 ## 9. Deployment Architecture
 
-Environments: Local Dev (Docker Compose, local volumes) and Local Demo (stable seed data,
-reproducible scripts, optional preloaded model). CI/CD: lint → typecheck → unit → API →
-integration (Compose stack) → package → demo smoke test.
+Environments: Local Dev (Docker Compose, local volumes) and Local Validation (stable seed
+data, reproducible scripts, optional preloaded model). CI/CD: lint → typecheck → unit →
+API → integration (Compose stack) → package → smoke test.
 
 ```mermaid
 flowchart TB
@@ -373,10 +374,10 @@ flowchart TB
 Unit (Pytest/Ruff/MyPy): SDK request construction + error handling, adapter serialization,
 API validation, lifecycle transitions, worker job handling, repository logic. Integration:
 Docker Compose stack covering create project → run → log → artifact → register → evaluate →
-deploy → query endpoint. E2E demo: start stack, run notebook/script, train/load small
+deploy → query endpoint. E2E smoke test: start stack, run notebook/script, train/load small
 model, log, register, evaluate, promote, deploy, call inference, validate. Quality gates:
 SDK coverage >80%, API route coverage >80%, docstrings on public SDK methods, OpenAPI
-schema checked in, smoke test passes from clean Compose start, demo under 10 min on target
+schema checked in, smoke test passes from clean Compose start, workflow under 10 min on target
 hardware.
 
 ## 11. Appendices

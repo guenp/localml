@@ -1,6 +1,6 @@
 """Minimal bearer-token auth for the MVP.
 
-When ``LOCALML_AUTH_BYPASS=true`` (the default for local demos) all requests are allowed.
+When ``LOCALML_AUTH_BYPASS=true`` (the default for local development) all requests are allowed.
 Otherwise the ``Authorization: Bearer <token>`` header must match ``LOCALML_API_TOKEN``.
 Future work (OIDC, mTLS, RBAC) is tracked in the roadmap.
 """

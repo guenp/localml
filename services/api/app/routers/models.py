@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from ..lifecycle import InvalidTransition, can_transition
+from ..repositories import apply_idempotency
 from ..schemas import (
     ModelResponse,
     ModelVersionResponse,
@@ -41,19 +42,39 @@ def get_model(model_name: str) -> ModelResponse:
     response_model=ModelVersionResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def register_version(model_name: str, req: RegisterModelVersionRequest) -> ModelVersionResponse:
-    with store.lock:
-        mv = ModelVersion(
-            model_name=model_name,
-            version=store.next_version(model_name),
-            framework=req.framework,
-            artifact_uri=req.artifact_uri,
-            metadata=req.metadata,
-        )
-        store.models.setdefault(model_name, []).append(mv)
-        store.model_versions[mv.id] = mv
-    # TODO(phase1): register MLflow model version; persist to Postgres; audit event.
-    return _to_response(mv)
+def register_version(
+    model_name: str,
+    req: RegisterModelVersionRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> ModelVersionResponse:
+    return _register_version(model_name, req, idempotency_key)
+
+
+def _register_version(
+    model_name: str,
+    req: RegisterModelVersionRequest,
+    idempotency_key: str | None,
+) -> ModelVersionResponse:
+    def create() -> ModelVersion:
+        with store.lock:
+            mv = ModelVersion(
+                model_name=model_name,
+                version=store.next_version(model_name),
+                framework=req.framework,
+                artifact_uri=req.artifact_uri,
+                metadata={**req.metadata, "mlflow_model_name": model_name},
+            )
+            store.models.setdefault(model_name, []).append(mv)
+            store.model_versions[mv.id] = mv
+            return mv
+
+    return apply_idempotency(
+        "model_versions",
+        idempotency_key,
+        {"path_model_name": model_name, **req.model_dump(mode="json")},
+        create,
+        _to_response,
+    )
 
 
 @router.get("/{model_name}/versions/{version}", response_model=ModelVersionResponse)

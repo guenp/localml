@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 
 from ..queue import enqueue_evaluation
+from ..repositories import resolve_model_version
 from ..schemas import CreateEvaluationRequest, EvaluationJobResponse
 from ..store import EvaluationJob, store
 
@@ -27,11 +28,10 @@ def _to_response(job: EvaluationJob) -> EvaluationJobResponse:
 
 @router.post("", response_model=EvaluationJobResponse, status_code=status.HTTP_201_CREATED)
 def create_evaluation(req: CreateEvaluationRequest) -> EvaluationJobResponse:
-    if req.model_version_id not in store.model_versions:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "model version not found")
+    mv = resolve_model_version(req.model_version_id)
     with store.lock:
         job = EvaluationJob(
-            model_version_id=req.model_version_id,
+            model_version_id=mv.id,
             dataset_uri=req.dataset_uri,
             requested_metrics=req.metrics,
             config=req.config,

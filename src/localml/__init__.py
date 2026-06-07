@@ -6,7 +6,7 @@ Public API::
 
     ml.configure(api_url="http://localhost:8000", token="local-dev-token")
 
-    with ml.start_run(project="demo", config={"lr": 0.001}) as run:
+    with ml.start_run(project="local", config={"lr": 0.001}) as run:
         ml.log_metrics({"accuracy": 0.91})
         ml.log_artifact("outputs/model.safetensors")
         version = ml.mlx.log_model(name="assistant", model_dir="./model")
@@ -17,7 +17,7 @@ Public API::
 
 from __future__ import annotations
 
-from . import huggingface, jax, mlx, torch
+from . import datasets, huggingface, jax, mlx, torch
 from .config import Config, configure
 from .exceptions import (
     ArtifactUploadError,
@@ -30,12 +30,13 @@ from .exceptions import (
 )
 from .ops import deploy, evaluate, log_artifact, log_metrics, log_params, register_model
 from .run import start_run
-from .types import Deployment, EvaluationJob, ModelVersion, Run
+from .types import Dataset, Deployment, EvaluationJob, ModelVersion, Run
 
 __all__ = [
     "ArtifactUploadError",
     "AuthenticationError",
     "Config",
+    "Dataset",
     "Deployment",
     "DeploymentError",
     "EvaluationFailedError",
@@ -46,6 +47,7 @@ __all__ = [
     "Run",
     "ValidationError",
     "configure",
+    "datasets",
     "deploy",
     "evaluate",
     "huggingface",

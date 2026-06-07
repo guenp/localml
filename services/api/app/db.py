@@ -123,11 +123,14 @@ class ModelVersion(Base):
 
 class Dataset(Base):
     __tablename__ = "datasets"
+    __table_args__ = (UniqueConstraint("project_id", "name", "version", name="uq_dataset_version"),)
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     name: Mapped[str] = mapped_column(Text)
     version: Mapped[str] = mapped_column(Text)
     artifact_uri: Mapped[str] = mapped_column(Text)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    example_ids: Mapped[list] = mapped_column(JSON, default=list)
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 
@@ -173,3 +176,15 @@ class AuditEvent(Base):
     resource_id: Mapped[str | None] = mapped_column(String, nullable=True)
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class IdempotencyKey(Base):
+    __tablename__ = "idempotency_keys"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    resource: Mapped[str] = mapped_column(Text, index=True)
+    key: Mapped[str] = mapped_column(Text, index=True)
+    request_hash: Mapped[str] = mapped_column(Text)
+    response: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("resource", "key", name="uq_idempotency_resource_key"),)

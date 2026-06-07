@@ -1,8 +1,8 @@
-"""In-memory store for the scaffold.
+"""Process-local metadata store used by the control plane.
 
-Lets the API run end-to-end without Postgres so the demo flow works out of the box. Phase 1
-replaces this with a SQLAlchemy repository layer backed by the ORM models in :mod:`app.db`.
-All data is process-local and lost on restart.
+The SQLAlchemy models in :mod:`app.db` define the durable Postgres schema. This store keeps
+tests and local development lightweight while preserving the same resource boundaries used
+by the repository layer.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ class Run:
     project: str
     config: dict[str, Any]
     status: str = "running"
+    mlflow_run_id: str | None = None
     id: str = field(default_factory=_uuid)
     metrics: dict[str, float] = field(default_factory=dict)
     params: dict[str, Any] = field(default_factory=dict)
@@ -42,6 +43,18 @@ class ModelVersion:
     framework: str
     artifact_uri: str
     status: str = "created"
+    metadata: dict[str, Any] = field(default_factory=dict)
+    id: str = field(default_factory=_uuid)
+
+
+@dataclass
+class Dataset:
+    project: str
+    name: str
+    version: str
+    artifact_uri: str
+    row_count: int
+    example_ids: list[str]
     metadata: dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=_uuid)
 
@@ -77,8 +90,11 @@ class Store:
         # model name -> list of versions (ordered)
         self.models: dict[str, list[ModelVersion]] = {}
         self.model_versions: dict[str, ModelVersion] = {}
+        self.datasets: dict[str, list[Dataset]] = {}
+        self.dataset_versions: dict[str, Dataset] = {}
         self.evaluations: dict[str, EvaluationJob] = {}
         self.deployments: dict[str, Deployment] = {}
+        self.idempotency: dict[tuple[str, str], dict[str, Any]] = {}
 
     @property
     def lock(self) -> threading.RLock:
@@ -86,6 +102,9 @@ class Store:
 
     def next_version(self, model_name: str) -> int:
         return len(self.models.get(model_name, [])) + 1
+
+    def next_dataset_version(self, name: str) -> str:
+        return f"v{len(self.datasets.get(name, [])) + 1}"
 
 
 store = Store()

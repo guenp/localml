@@ -2,8 +2,8 @@
 
 [![CI](https://github.com/guenp/localml/actions/workflows/ci.yml/badge.svg)](https://github.com/guenp/localml/actions/workflows/ci.yml)
 
-A **local ML experimentation platform demo** that runs entirely on an Apple Silicon
-workstation. It demonstrates the core architecture of a production ML platform at local
+A **local ML experimentation platform** that runs entirely on an Apple Silicon
+workstation. It implements the core architecture of a production ML platform at local
 scale: a Python SDK, framework adapters, experiment tracking, a model registry, artifact
 storage, evaluation jobs, and local model serving.
 
@@ -82,7 +82,7 @@ import localml as ml
 
 ml.configure(api_url="http://localhost:8000", token="local-dev-token")
 
-with ml.start_run(project="local-demo", config={"model": "tiny-llm"}) as run:
+with ml.start_run(project="local", config={"model": "tiny-llm"}) as run:
     ml.log_params({"batch_size": 4, "quantization": "4bit"})
     ml.log_metrics({"baseline_accuracy": 0.82})
 

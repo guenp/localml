@@ -21,7 +21,7 @@ from localml.client import get_client
 def _fake_hf_model_dir() -> str:
     """Create a throwaway model dir with the minimum files the HF adapter expects."""
     d = Path(tempfile.mkdtemp(prefix="tiny-assistant-"))
-    (d / "config.json").write_text('{"model_type": "demo"}')
+    (d / "config.json").write_text('{"model_type": "example"}')
     (d / "tokenizer.json").write_text("{}")
     return str(d)
 
@@ -29,7 +29,7 @@ def _fake_hf_model_dir() -> str:
 def main() -> None:
     ml.configure(api_url="http://localhost:8000", token="local-dev-token")
 
-    with ml.start_run(project="local-demo", config={"model": "tiny-llm"}):
+    with ml.start_run(project="local", config={"model": "tiny-llm"}):
         ml.log_params({"batch_size": 4, "quantization": "4bit"})
         ml.log_metrics({"baseline_accuracy": 0.82})
 

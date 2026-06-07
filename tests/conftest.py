@@ -26,8 +26,11 @@ def client():  # type: ignore[no-untyped-def]
     store.runs.clear()
     store.models.clear()
     store.model_versions.clear()
+    store.datasets.clear()
+    store.dataset_versions.clear()
     store.evaluations.clear()
     store.deployments.clear()
+    store.idempotency.clear()
 
     with TestClient(app) as c:
         yield c
