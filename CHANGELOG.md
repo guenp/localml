@@ -26,6 +26,12 @@ All notable changes to this project are documented here, following
   llama.cpp / vLLM) rather than a bespoke inference service — see design §4.5 and roadmap
   Phases 3–4.
 
+### Fixed
+
+- MLflow integration hooks now fail fast (bounded `MLFLOW_HTTP_REQUEST_MAX_RETRIES`/timeout)
+  so an unreachable tracking server no longer blocks the request path for minutes. Unit tests
+  stub the optional-service hooks so they never perform network I/O.
+
 ## [0.1.0] - 2026-06-06
 
 ### Added

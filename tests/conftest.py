@@ -19,6 +19,23 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "services" / "api"))
 
 
+@pytest.fixture(autouse=True)
+def offline_integrations(monkeypatch):  # type: ignore[no-untyped-def]
+    """Neutralize optional-service hooks so unit tests never perform network I/O.
+
+    In production these degrade gracefully on their own, but against an unreachable MLflow the
+    HTTP client can retry for minutes. Tests patch the router-bound names to offline stubs so
+    the suite stays fast and hermetic; real MLflow/MinIO wiring is covered by the Compose
+    integration stack (roadmap Phase 6).
+    """
+    from app.routers import datasets, models, runs
+
+    monkeypatch.setattr(runs, "create_mlflow_run", lambda *a, **k: None)
+    monkeypatch.setattr(runs, "create_presigned_put_url", lambda *a, **k: None)
+    monkeypatch.setattr(models, "register_mlflow_model", lambda *a, **k: None)
+    monkeypatch.setattr(datasets, "create_presigned_put_url", lambda *a, **k: None)
+
+
 @pytest.fixture
 def client():  # type: ignore[no-untyped-def]
     from app.db import Base

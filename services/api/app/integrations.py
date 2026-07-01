@@ -10,10 +10,17 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 
 from .config import settings
 
 log = logging.getLogger(__name__)
+
+# Bound MLflow's HTTP client so an unreachable tracking server fails fast instead of retrying
+# with exponential backoff for minutes (which would block the request path — and CI). Operators
+# can still override these via the environment. ``setdefault`` runs at import, before any call.
+os.environ.setdefault("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "0")
+os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "3")
 
 
 def create_mlflow_run(project: str) -> str | None:
