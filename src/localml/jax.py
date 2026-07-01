@@ -37,12 +37,21 @@ def log_checkpoint(
 
     Scaffold note: real Orbax serialization + sharding capture land in Phase 2.
     """
-    meta: dict[str, Any] = {"checkpoint_format": checkpoint_format, "config": config or {}}
-    meta.update(metadata or {})
-
     target = Path(checkpoint_dir) if checkpoint_dir else Path(f"./.localml/jax/{name}")
     target.mkdir(parents=True, exist_ok=True)
-    # TODO(phase2): orbax.checkpoint save of params/state; capture shape/dtype + jax version.
-    artifact_uri = base.stage_artifact(target)
+    # TODO(phase3): Orbax save of params/state + shape/dtype capture when jax/orbax are present.
 
-    return base.register(name=name, framework="jax", artifact_uri=artifact_uri, metadata=meta)
+    bundle, checksum, files = base.package_dir(target)
+    meta: dict[str, Any] = {
+        "checkpoint_format": checkpoint_format,
+        "config": config or {},
+        "jax_version": base.framework_version("jax"),
+        "has_params": params is not None,
+        "has_state": state is not None,
+        "checksum": checksum,
+        "manifest": files,
+    }
+    meta.update(metadata or {})
+    return base.register(
+        name=name, framework="jax", artifact_uri=base.stage_artifact(bundle), metadata=meta
+    )

@@ -26,7 +26,15 @@ def log_model(
         ml.mlx.log_model(name="assistant", model_dir="./mlx_model", quantization="4bit")
     """
     path = base.require_dir(model_dir)
-    meta: dict[str, Any] = {"runtime": "mlx", "quantization": quantization}
+    bundle, checksum, files = base.package_dir(path)
+    meta: dict[str, Any] = {
+        "runtime": "mlx",
+        "quantization": quantization,
+        "mlx_version": base.framework_version("mlx"),
+        "checksum": checksum,
+        "manifest": files,
+    }
     meta.update(metadata or {})
-    artifact_uri = base.stage_artifact(path)
-    return base.register(name=name, framework="mlx", artifact_uri=artifact_uri, metadata=meta)
+    return base.register(
+        name=name, framework="mlx", artifact_uri=base.stage_artifact(bundle), metadata=meta
+    )
