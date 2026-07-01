@@ -35,6 +35,45 @@ def test_configure_env_override(monkeypatch):
     assert cfg.api_url == "http://env:1234"
 
 
+def test_config_precedence_file_fallback(monkeypatch):
+    """With no explicit arg or env var, values come from ~/.localml/config.toml."""
+    from localml import config as cfg_mod
+
+    monkeypatch.delenv("LOCALML_API_URL", raising=False)
+    monkeypatch.delenv("LOCALML_API_TOKEN", raising=False)
+    monkeypatch.setattr(
+        cfg_mod,
+        "_load_file",
+        lambda *a, **k: {
+            "api_url": "http://file:1",
+            "token": "ftok",
+            "timeout": 12,
+            "max_retries": 7,
+        },
+    )
+    cfg = cfg_mod.configure()
+    assert cfg.api_url == "http://file:1"
+    assert cfg.token == "ftok"
+    assert cfg.timeout == 12.0
+    assert cfg.max_retries == 7
+
+
+def test_config_precedence_env_over_file(monkeypatch):
+    from localml import config as cfg_mod
+
+    monkeypatch.setenv("LOCALML_API_URL", "http://env:2")
+    monkeypatch.setattr(cfg_mod, "_load_file", lambda *a, **k: {"api_url": "http://file:1"})
+    assert cfg_mod.configure().api_url == "http://env:2"
+
+
+def test_config_precedence_explicit_over_all(monkeypatch):
+    from localml import config as cfg_mod
+
+    monkeypatch.setenv("LOCALML_API_URL", "http://env:2")
+    monkeypatch.setattr(cfg_mod, "_load_file", lambda *a, **k: {"api_url": "http://file:1"})
+    assert cfg_mod.configure(api_url="http://explicit:3").api_url == "http://explicit:3"
+
+
 class _FakeClient:
     """Returns a completed job on refresh."""
 

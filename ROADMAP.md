@@ -51,18 +51,25 @@ than bolted on as a parallel subsystem. Three corrections from design review are
 - [x] **`name:version` resolution** (e.g. `local-assistant:v1`) shared by models and datasets;
       resolves to canonical ids server-side. Prompts join this in Phase 3.
 
-## Phase 2 — SDK end-to-end
+## Phase 2 — SDK end-to-end ✅
 
-- [ ] Decide and document **one SDK idiom** and apply it consistently. Keep the functional
-      surface (`ml.start_run`, `ml.evaluate`, `ml.predict`, `ml.compare`, `ml.prompts.*`)
-      rather than introducing a parallel `Client()` object alongside it.
-- [ ] Real HTTPX calls against the control plane with retry/backoff.
-- [ ] Run context manager logs to the live API.
-- [ ] Artifact staging + checksum before registry record is finalized.
-- [ ] Adapter serialization: real `state_dict` / Orbax / MLX / safetensors packaging.
-- [ ] Job-handle polling with exponential backoff (`.wait()`) shared by prediction + eval.
-- [ ] Config precedence: env vars → `~/.localml/config.toml` → defaults.
-- [ ] Contract tests pinning SDK payloads to the OpenAPI schema.
+- [x] Decide and document **one SDK idiom** and apply it consistently: a functional,
+      module-level surface (`ml.start_run`, `ml.evaluate`, `ml.deploy`, `ml.datasets.*`,
+      framework adapters); the HTTPX `Client` stays an internal transport (see design §4.1).
+      `ml.predict`/`ml.compare`/`ml.prompts.*` are added in Phase 3 on the same idiom.
+- [x] Real HTTPX calls against the control plane with retry/backoff — exercised by the
+      live-server `sdk` integration tests.
+- [x] Run context manager logs to the live API (create → log → complete/fail).
+- [x] Artifact staging + checksum before the registry record is finalized (SHA-256 +
+      pre-signed upload when MinIO is available).
+- [x] Adapter serialization: `base.package_dir` bundles model dirs (tar.gz + per-file manifest
+      + content digest) and captures framework versions; mlx/huggingface fully; torch/jax
+      serialize `state_dict`/checkpoint when the framework is importable. (Orbax shape/dtype
+      capture deferred to Phase 3.)
+- [x] Job-handle polling with exponential backoff (`.wait()`) shared via
+      `_polling.wait_for_terminal` (ready for prediction + eval).
+- [x] Config precedence: explicit args → env vars → `~/.localml/config.toml` → defaults.
+- [x] Contract tests pinning SDK payloads/routes to the OpenAPI schema.
 
 ## Phase 3 — Prediction + Evaluation loop
 
