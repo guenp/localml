@@ -25,28 +25,31 @@ than bolted on as a parallel subsystem. Three corrections from design review are
 - [x] Docker Compose for the full local stack.
 - [x] Design doc checked in.
 
-## Phase 1 — Control plane core (foundations)
+## Phase 1 — Control plane core (foundations) ✅
 
 - [x] Postgres schema via SQLAlchemy models + Alembic migrations.
-- [ ] Durable SQLAlchemy repository layer for projects, runs, metrics, params, artifacts,
-      models, versions, datasets, and idempotency records. Current branch has process-local
-      repository helpers for API behavior and tests.
-- [ ] Wire MLflow client into run + model-version creation. Current branch has an optional,
-      defensive run-creation hook; model-version registration still needs real MLflow
-      integration.
-- [ ] MinIO artifact upload (direct or pre-signed URL flow). Current branch has optional
-      pre-signing plumbing; the API still needs a client-facing upload contract.
+- [x] Durable SQLAlchemy repository layer for projects, runs, metrics, params, artifacts,
+      models, versions, datasets, and idempotency records. Routers depend on a request-scoped
+      `Session` (`app.session.get_db`); the in-memory store is gone. Unit tests run against
+      SQLite; Postgres in prod.
+- [x] Wire MLflow client into run + model-version creation. Both are optional/defensive hooks
+      (`create_mlflow_run`, `register_mlflow_model`) that degrade to no-ops when MLflow is
+      unreachable, so the metadata flow never blocks on it.
+- [x] MinIO artifact upload via **pre-signed PUT URLs**. `POST /runs/{id}/artifacts` and
+      `POST /datasets` return an `upload_url` for the client to PUT bytes directly to MinIO
+      (degrades to `None` when boto3/MinIO is unavailable).
 - [x] Lifecycle state machine with validated transitions and 409/422 errors.
-- [ ] Idempotency keys for all create operations. Current branch covers projects, runs,
-      model versions, and datasets; evaluations and deployments remain.
-- [ ] Seed script: default local user + project + reset for local development.
-- [ ] **Dataset registry** — `POST /datasets` / `GET /datasets/{name}` + SDK
-      (`ml.datasets.register/get`), JSONL upload to MinIO, **stable per-row `example_id`s**
-      (required for later comparison). Current branch covers the API, SDK namespace, and
-      stable `example_id`s; JSONL upload to MinIO remains.
-- [ ] **`name:version` resolution** (e.g. `local-assistant:v1`) shared by models, datasets,
-      and prompts; resolves to canonical ids server-side. Current branch covers models and
-      datasets; prompts remain for Phase 3.
+- [x] Idempotency keys for all create operations (projects, runs, model versions, datasets,
+      evaluations, deployments), persisted in the `idempotency_keys` table; body-mismatch on a
+      reused key is a 409.
+- [x] Seed script: default local user + project (`scripts/seed.py`, idempotent) + fast reset
+      (`scripts/reset.py` — in-place DB truncate + re-seed, or `--volumes` for a full Compose
+      teardown).
+- [x] **Dataset registry** — `POST /datasets` / `GET /datasets/{name}` + SDK
+      (`ml.datasets.register/get`), pre-signed JSONL upload to MinIO, **stable per-row
+      `example_id`s** (caller-supplied or content-hash; required for later comparison).
+- [x] **`name:version` resolution** (e.g. `local-assistant:v1`) shared by models and datasets;
+      resolves to canonical ids server-side. Prompts join this in Phase 3.
 
 ## Phase 2 — SDK end-to-end
 
@@ -76,8 +79,11 @@ scored (and re-scored) without re-running inference, and variants can be compare
 ### M2 — Prediction jobs (run on the worker)
 
 - [ ] `PredictionJob` model: resolves model + dataset + prompt + inference config + provider.
-- [ ] **`InferenceProvider` interface** (`generate(prompt, config) -> InferenceResult`) plus
-      an **Ollama provider** for worker-side generation.
+- [ ] **`InferenceProvider` interface** (`generate(prompt, config) -> InferenceResult`). The
+      default provider is a thin **OpenAI-compatible client** (the `openai` SDK pointed at a
+      configurable `base_url`) — Ollama, MLX-LM, llama.cpp, and vLLM all speak the OpenAI
+      `/v1/chat/completions` API, so one provider covers every local backend. No bespoke
+      inference protocol.
 - [ ] Worker renders prompts per dataset row and runs inference; **`batch_size` =
       concurrency** of in-flight requests, not true batching.
 - [ ] `PredictionResult` JSONL writer (input, rendered_prompt, output, latency, token
@@ -107,13 +113,20 @@ scored (and re-scored) without re-running inference, and variants can be compare
 
 ## Phase 4 — Local serving, providers + deployment
 
-- [ ] **MLX-LM provider** and **custom provider registration**
-      (`ml.providers.register("custom", fn)`), reusing the Phase 3 `InferenceProvider`
-      interface.
-- [ ] Inference service: `/load`, `/predict`, `/v1/chat/completions`, `/health`, `/models`.
-- [ ] Deployment flow: validate lifecycle state → resolve artifact → load → mark active.
-- [ ] `Deployment.predict()` round-trips through the serving runtime.
-- [ ] Hot model swap on the serving process.
+Serving is an **OpenAI-compatible proxy**, not a bespoke inference service: the control plane
+resolves a deployment to a backend `base_url` + model id and forwards `/v1/chat/completions`
+(and `/v1/completions`) to a local OpenAI-compatible server (Ollama / MLX-LM / llama.cpp /
+vLLM). This reuses the Phase 3 `InferenceProvider` and keeps localml out of the token-decoding
+business.
+
+- [ ] Thin proxy router: `POST /deployments/{id}/v1/chat/completions` (and `/predict` sugar)
+      forwards to the deployment's backend and streams the response back.
+- [ ] Backend registry: map a deployment target to `{base_url, model, api_key?}`; **custom
+      provider registration** (`ml.providers.register("custom", fn)`) for non-OpenAI backends.
+- [ ] Deployment flow: validate lifecycle state → resolve artifact/model id → health-check the
+      backend → mark active (endpoint already surfaced in Phase 1).
+- [ ] `Deployment.predict()` / `.chat()` round-trip through the proxy.
+- [ ] Hot model swap = repoint the deployment's backend/model; no process restart.
 
 ## Phase 5 — Interfaces & DX
 

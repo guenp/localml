@@ -35,10 +35,19 @@ class LogArtifactRequest(BaseModel):
     checksum: str | None = None
 
 
+class ArtifactResponse(BaseModel):
+    id: str
+    uri: str
+    artifact_type: str
+    checksum: str | None = None
+    upload_url: str | None = None
+
+
 class RegisterModelVersionRequest(BaseModel):
     model_name: str
     framework: str
     artifact_uri: str
+    project: str = "local"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -128,6 +137,7 @@ class DatasetResponse(BaseModel):
     row_count: int
     example_ids: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    upload_url: str | None = None
 
 
 class ResolveReferenceResponse(BaseModel):

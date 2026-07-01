@@ -1,7 +1,14 @@
-"""Optional service integrations used by the control plane."""
+"""Optional service integrations used by the control plane.
+
+Every function here degrades gracefully: if the optional dependency or backing service is
+unavailable (common when running the API standalone or in unit tests), it logs and returns
+``None`` so the core metadata flow keeps working. Real end-to-end wiring is exercised by the
+Compose integration stack (Phase 6).
+"""
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from .config import settings
@@ -28,8 +35,30 @@ def create_mlflow_run(project: str) -> str | None:
     return active.info.run_id
 
 
+def register_mlflow_model(name: str) -> str | None:
+    """Ensure a registered model exists in MLflow and return its name.
+
+    Idempotent: a model that already exists is treated as success.
+    """
+    try:
+        import mlflow
+    except Exception as exc:  # pragma: no cover - optional dependency
+        log.warning("MLflow import failed: %s", exc)
+        return None
+
+    try:
+        mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+        client = mlflow.tracking.MlflowClient()
+        with contextlib.suppress(Exception):  # already exists / transient
+            client.create_registered_model(name)
+        return name
+    except Exception as exc:  # pragma: no cover - depends on external service
+        log.warning("MLflow model registration failed: %s", exc)
+        return None
+
+
 def create_presigned_put_url(object_key: str) -> str | None:
-    """Return a MinIO pre-signed PUT URL when boto3 is available."""
+    """Return a MinIO (S3) pre-signed PUT URL for ``object_key`` when boto3 is available."""
     try:
         import boto3
     except ImportError:

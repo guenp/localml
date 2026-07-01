@@ -1,8 +1,9 @@
 # Software Design Document: Local ML Experimentation Platform
 
-> Version 0.1 — 2026-06-05. This is the source design for the `localml` scaffold. The
-> current codebase implements interfaces and a runnable in-memory control plane; see
-> `ROADMAP.md` in the repository root for the path to full functionality.
+> Version 0.2 — 2026-07-01. Source design for `localml`. Phase 1 (control-plane core) is
+> implemented: a durable SQLAlchemy/Postgres metadata store behind the FastAPI control plane,
+> with MLflow/MinIO wired defensively. Serving is an OpenAI-compatible proxy (see §4.5). See
+> `ROADMAP.md` for the path to full functionality.
 
 ## 1. Introduction
 
@@ -43,7 +44,7 @@ versioning, production compliance workflows, large-scale inference traffic manag
 | MinIO             | S3-compatible local object storage for artifacts.                                     |
 | Model Registry    | System of record for model names, versions, artifacts, metadata, lifecycle state.     |
 | Artifact          | File/dir produced by an experiment (weights, configs, reports, logs).                 |
-| Evaluation Job    | Background job that evaluates a model version against a dataset and records metrics.   |
+| Evaluation Job    | Background job that evaluates a model version against a dataset and records metrics.  |
 | Control Plane     | Backend API + services managing metadata, jobs, registry state, lifecycle.            |
 | Serving Runtime   | Local inference service that loads a model and exposes prediction/chat APIs.          |
 | Framework Adapter | SDK module translating framework-specific formats into shared platform primitives.    |
@@ -112,7 +113,7 @@ boundaries, not a microservices-heavy production platform.
 | Artifact Storage    | MinIO                                         |
 | Queue               | Redis                                         |
 | Worker              | Custom Python worker (RQ/Celery/Dramatiq opt) |
-| Serving             | Ollama or MLX-LM server                       |
+| Serving             | OpenAI-compatible proxy → Ollama / MLX-LM / llama.cpp / vLLM |
 | UI                  | MLflow UI, optional Streamlit                 |
 | Packaging           | uv / Hatchling                                |
 | Infrastructure      | Docker Compose                                |
@@ -275,11 +276,16 @@ compute metrics → save report to MinIO → log metrics to MLflow → update Po
 failure: mark `failed`, store reason + traceback summary, bounded retries, preserve partial
 logs.
 
-### 4.5 Local inference service
+### 4.5 Local serving (OpenAI-compatible proxy)
 
-Serves registered models locally. Endpoints: `POST /load`, `POST /predict`,
-`POST /v1/chat/completions`, `GET /health`, `GET /models`. Backends: Ollama, MLX, or a
-simple custom wrapper. Reports load failures to the control plane.
+localml does **not** ship a bespoke inference server. Every mainstream local runtime — Ollama,
+MLX-LM, llama.cpp, vLLM — already exposes the OpenAI API (`/v1/chat/completions`,
+`/v1/completions`), so serving is a thin **proxy**: a deployment resolves to a backend
+`base_url` + model id, and the control plane forwards OpenAI-shaped requests to it (streaming
+passthrough) and reports health. This keeps localml out of token decoding, gives users a
+familiar API, and lets the same `InferenceProvider` (an `openai` client with a configurable
+`base_url`) drive both Phase 3 batch prediction and Phase 4 online serving. Custom/non-OpenAI
+backends plug in via `ml.providers.register(...)`. See ROADMAP.md Phase 4.
 
 ## 5. Database Design
 
@@ -404,3 +410,4 @@ stateDiagram-v2
 | Version | Date       | Author                              | Changes                          |
 | ------- | ---------- | ----------------------------------- | -------------------------------- |
 | 0.1     | 2026-06-05 | Guenevere Prawiroatmodjo / ChatGPT  | Initial SDD draft.               |
+| 0.2     | 2026-07-01 | Guenevere Prawiroatmodjo            | Phase 1 landed: durable repository layer, DB-backed idempotency, seed/reset, pre-signed artifact/dataset upload. Serving reframed as an OpenAI-compatible proxy (§4.5). |

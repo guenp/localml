@@ -1,25 +1,34 @@
-"""Seed a default local user and project.
+"""Seed a default local user and project directly in the database.
 
-Scaffold version targets the running control plane over HTTP so it works against the
-in-memory store. The same request path works against the Postgres-backed control plane.
+Idempotent: safe to run repeatedly. Points at ``DATABASE_URL`` (see ``.env`` /
+``docker-compose.yml``). For a running control plane over HTTP, ``POST /projects`` also works,
+but the default user is a DB-level concern so we seed it here.
 """
 
 from __future__ import annotations
 
-import os
+import sys
+from pathlib import Path
 
-import httpx
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "services" / "api"))
 
-API_URL = os.environ.get("LOCALML_API_URL", "http://localhost:8000")
-TOKEN = os.environ.get("LOCALML_API_TOKEN", "local-dev-token")
+from app.repositories import DEFAULT_PROJECT, get_or_create_project
+from app.session import SessionLocal, init_db
 
 
 def main() -> None:
-    headers = {"Authorization": f"Bearer {TOKEN}"}
-    with httpx.Client(base_url=API_URL, headers=headers, timeout=10) as client:
-        resp = client.post("/projects", json={"name": "local", "description": "Local project"})
-        resp.raise_for_status()
-        print("seeded project:", resp.json())
+    if _is_sqlite():
+        init_db()
+    with SessionLocal() as db:
+        project = get_or_create_project(db, DEFAULT_PROJECT, "Default local project")
+        db.commit()
+        print(f"seeded default user 'local' and project '{project.name}' ({project.id})")
+
+
+def _is_sqlite() -> bool:
+    from app.config import settings
+
+    return settings.database_url.startswith("sqlite")
 
 
 if __name__ == "__main__":

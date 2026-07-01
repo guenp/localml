@@ -32,7 +32,7 @@ flowchart LR
     API --> DB[(Postgres<br/>metadata)]
     API --> Store[(MinIO<br/>artifacts)]
     API --> Queue[Redis<br/>job queue]
-    API --> Serving[Local inference<br/>Ollama / MLX]
+    API --> Serving[Serving proxy<br/>OpenAI-compatible: Ollama / MLX]
     Queue --> Worker[Worker]
     Worker --> Store
     Worker --> DB
