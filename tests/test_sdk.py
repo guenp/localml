@@ -67,3 +67,14 @@ def test_evaluation_wait_failure_raises():
 def test_model_version_is_dataholder():
     mv = ModelVersion(id="1", model_name="m", version=1, framework="mlx", artifact_uri="u")
     assert mv.status == "created"
+
+
+def test_sha256_file_matches_hashlib(tmp_path):
+    import hashlib
+
+    from localml._hashing import sha256_file
+
+    f = tmp_path / "blob.bin"
+    payload = b"the quick brown fox" * 5000  # exceed the read chunk size
+    f.write_bytes(payload)
+    assert sha256_file(f) == hashlib.sha256(payload).hexdigest()

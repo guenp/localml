@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from .config import Config, get_config
 from .exceptions import (
+    ArtifactUploadError,
     AuthenticationError,
     DeploymentError,
     LocalMLError,
@@ -90,12 +92,22 @@ class Client:
     def log_params(self, run_id: str, params: dict[str, Any]) -> None:
         self._request("POST", f"/runs/{run_id}/params", json={"params": params})
 
-    def log_artifact(self, run_id: str, uri: str, artifact_type: str) -> None:
-        self._request(
+    def log_artifact(
+        self, run_id: str, uri: str, artifact_type: str, checksum: str | None = None
+    ) -> dict[str, Any]:
+        return self._request(
             "POST",
             f"/runs/{run_id}/artifacts",
-            json={"uri": uri, "artifact_type": artifact_type},
+            json={"uri": uri, "artifact_type": artifact_type, "checksum": checksum},
         )
+
+    def upload_file(self, url: str, path: str) -> None:
+        """PUT a local file to a pre-signed URL, raising :class:`ArtifactUploadError`."""
+        try:
+            resp = httpx.put(url, content=Path(path).read_bytes(), timeout=self.config.timeout)
+            resp.raise_for_status()
+        except Exception as exc:
+            raise ArtifactUploadError(f"failed to upload {path}: {exc}") from exc
 
     def complete_run(self, run_id: str, status: str) -> None:
         self._request("POST", f"/runs/{run_id}/metrics", json={"metrics": {}, "status": status})

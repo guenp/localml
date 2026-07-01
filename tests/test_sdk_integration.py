@@ -81,3 +81,17 @@ def test_deploy_rejects_non_deployable_model(sdk):
 def test_client_create_and_get_run(sdk):
     r1 = sdk.create_run(project="local", config={"seed": 1})
     assert sdk.get_run(r1.id).id == r1.id
+
+
+def test_log_artifact_records_checksum(sdk, tmp_path):
+    from localml._hashing import sha256_file
+
+    run = sdk.create_run(project="local", config={})
+    artifact = tmp_path / "weights.bin"
+    artifact.write_bytes(b"hello world")
+    record = sdk.log_artifact(
+        run.id, uri=artifact.as_uri(), artifact_type="model", checksum=sha256_file(artifact)
+    )
+    assert record["checksum"] == sha256_file(artifact)
+    # No MinIO in tests, so there is no upload target and nothing to PUT.
+    assert record["upload_url"] is None
