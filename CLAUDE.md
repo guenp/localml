@@ -61,3 +61,4 @@ datasets, evaluation jobs, local serving) at single-workstation scale. Full spec
   boto3, Redis) over new bespoke machinery.
 - Update `ROADMAP.md` (checkboxes), `CHANGELOG.md` (`[Unreleased]`), and `IMPLEMENTATION_LOG.md`
   as you go. Don't commit/push unless asked.
+- **Never add a `Co-Authored-By` trailer (or any co-authorship) to commits or PRs.**
