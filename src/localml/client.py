@@ -80,6 +80,10 @@ class Client:
         )
         return Run(id=data["id"], project=data["project"], status=data.get("status", "running"))
 
+    def get_run(self, run_id: str) -> Run:
+        data = self._request("GET", f"/runs/{run_id}")
+        return Run(id=data["id"], project=data["project"], status=data.get("status", "running"))
+
     def log_metrics(self, run_id: str, metrics: dict[str, float], step: int | None = None) -> None:
         self._request("POST", f"/runs/{run_id}/metrics", json={"metrics": metrics, "step": step})
 
