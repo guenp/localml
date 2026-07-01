@@ -7,9 +7,12 @@ workstation. It implements the core architecture of a production ML platform at 
 scale: a Python SDK, framework adapters, experiment tracking, a model registry, artifact
 storage, evaluation jobs, and local model serving.
 
-> Status: **early scaffold.** Most components are stubs with coherent interfaces. See
-> [`ROADMAP.md`](./ROADMAP.md) for what's planned and [`docs/design.md`](./docs/design.md)
-> for the full software design document.
+> Status: **under active development.** The control plane (Phase 1 — durable Postgres-backed
+> metadata, lifecycle, idempotency, dataset registry) and the Python SDK (Phase 2 — real HTTPX
+> client, run tracking, artifact checksums, framework-adapter packaging) are implemented and
+> tested. The prediction/evaluation loop and local serving proxy are next. See
+> [`ROADMAP.md`](./ROADMAP.md) for status and [`docs/design.md`](./docs/design.md) for the full
+> software design document.
 
 ## What's here
 
@@ -17,8 +20,10 @@ storage, evaluation jobs, and local model serving.
 localml/
 ├── src/localml/          # Python SDK (`import localml as ml`)
 │   ├── adapters/         # torch / jax / mlx / huggingface framework adapters
-│   ├── client.py         # HTTPX client for the control plane
-│   ├── config.py         # ~/.localml/config.toml handling
+│   ├── client.py         # HTTPX client for the control plane (retry + idempotency)
+│   ├── ops.py            # ml.log_metrics / log_artifact / evaluate / deploy
+│   ├── datasets.py       # ml.datasets.register / get
+│   ├── config.py         # env → ~/.localml/config.toml → defaults
 │   ├── exceptions.py     # typed SDK errors
 │   ├── run.py            # run context manager
 │   ├── types.py          # Run / ModelVersion / EvaluationJob / Deployment
@@ -107,8 +112,10 @@ with ml.start_run(project="local", config={"model": "tiny-llm"}) as run:
 
 ```bash
 localml --help
-localml projects list
+localml health
+localml config --api-url http://localhost:8000
 localml runs get <run_id>
+localml models get <name>
 ```
 
 ## Development
