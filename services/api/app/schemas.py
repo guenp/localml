@@ -35,10 +35,19 @@ class LogArtifactRequest(BaseModel):
     checksum: str | None = None
 
 
+class ArtifactResponse(BaseModel):
+    id: str
+    uri: str
+    artifact_type: str
+    checksum: str | None = None
+    upload_url: str | None = None
+
+
 class RegisterModelVersionRequest(BaseModel):
     model_name: str
     framework: str
     artifact_uri: str
+    project: str = "local"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -56,6 +65,20 @@ class CreateEvaluationRequest(BaseModel):
 class CreateDeploymentRequest(BaseModel):
     model_version_id: str
     target: str = "local"
+
+
+class RegisterDatasetRequest(BaseModel):
+    project: str
+    name: str
+    artifact_uri: str
+    version: str | None = None
+    rows: list[dict[str, Any]] | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResolveReferenceRequest(BaseModel):
+    resource_type: str
+    reference: str
 
 
 # -- responses -----------------------------------------------------------------
@@ -103,3 +126,23 @@ class DeploymentResponse(BaseModel):
     target: str
     status: str
     endpoint_url: str | None = None
+
+
+class DatasetResponse(BaseModel):
+    id: str
+    project: str
+    name: str
+    version: str
+    artifact_uri: str
+    row_count: int
+    example_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    upload_url: str | None = None
+
+
+class ResolveReferenceResponse(BaseModel):
+    resource_type: str
+    reference: str
+    id: str
+    name: str
+    version: str

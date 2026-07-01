@@ -31,3 +31,6 @@ mlruns/
 .DS_Store
 .idea/
 .vscode/
+
+# Implementation log (local working notes, not tracked)
+IMPLEMENTATION_LOG.md

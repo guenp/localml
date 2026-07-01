@@ -39,6 +39,19 @@ class ModelVersion:
 
 
 @dataclass
+class Dataset:
+    """Versioned JSONL dataset registered with the control plane."""
+
+    id: str
+    project: str
+    name: str
+    version: str
+    artifact_uri: str
+    row_count: int
+    example_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
 class EvaluationJob:
     """Background job that evaluates a model version against a dataset."""
 

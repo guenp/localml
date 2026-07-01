@@ -1,8 +1,9 @@
 """SQLAlchemy ORM models — the Postgres schema (source of truth for platform metadata).
 
-This mirrors Section 5 of the design doc. The scaffold's routers currently use an
-in-memory store (:mod:`app.store`); wiring these models in via a repository layer + Alembic
-migrations is Phase 1 on the roadmap.
+This mirrors Section 5 of the design doc and is the source of truth for platform metadata.
+Routers reach it through a request-scoped session (:func:`app.session.get_db`) and the
+repository helpers in :mod:`app.repositories`. Postgres runs the Alembic migrations; SQLite
+(unit tests / local dev) uses :func:`app.session.init_db`.
 """
 
 from __future__ import annotations
@@ -123,12 +124,17 @@ class ModelVersion(Base):
 
 class Dataset(Base):
     __tablename__ = "datasets"
+    __table_args__ = (UniqueConstraint("project_id", "name", "version", name="uq_dataset_version"),)
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     name: Mapped[str] = mapped_column(Text)
     version: Mapped[str] = mapped_column(Text)
     artifact_uri: Mapped[str] = mapped_column(Text)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    example_ids: Mapped[list] = mapped_column(JSON, default=list)
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+    project: Mapped[Project] = relationship()
 
 
 class EvaluationJob(Base):
@@ -142,6 +148,8 @@ class EvaluationJob(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    metrics_rows: Mapped[list[EvaluationMetric]] = relationship(back_populates="job")
+
 
 class EvaluationMetric(Base):
     __tablename__ = "evaluation_metrics"
@@ -149,6 +157,8 @@ class EvaluationMetric(Base):
     evaluation_job_id: Mapped[str] = mapped_column(ForeignKey("evaluation_jobs.id"), index=True)
     name: Mapped[str] = mapped_column(Text)
     value: Mapped[float] = mapped_column(Float)
+
+    job: Mapped[EvaluationJob] = relationship(back_populates="metrics_rows")
 
 
 class Deployment(Base):
@@ -173,3 +183,15 @@ class AuditEvent(Base):
     resource_id: Mapped[str | None] = mapped_column(String, nullable=True)
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class IdempotencyKey(Base):
+    __tablename__ = "idempotency_keys"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    resource: Mapped[str] = mapped_column(Text, index=True)
+    key: Mapped[str] = mapped_column(Text, index=True)
+    request_hash: Mapped[str] = mapped_column(Text)
+    response: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("resource", "key", name="uq_idempotency_resource_key"),)

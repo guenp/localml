@@ -2,7 +2,7 @@
 
 [project]
 site_name = "localml"
-site_description = "Local ML experimentation platform demo SDK and control plane."
+site_description = "Local ML experimentation platform SDK and control plane."
 site_url = "https://guenp.github.io/localml/"
 copyright = "Copyright &copy; 2026 Guenevere Prawiroatmodjo"
 

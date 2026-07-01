@@ -1,15 +1,16 @@
-# Software Design Document: Local ML Experimentation Platform Demo
+# Software Design Document: Local ML Experimentation Platform
 
-> Version 0.1 — 2026-06-05. This is the source design for the `localml` scaffold. The
-> current codebase implements interfaces and a runnable in-memory control plane; see
-> `ROADMAP.md` in the repository root for the path to full functionality.
+> Version 0.2 — 2026-07-01. Source design for `localml`. Phase 1 (control-plane core) is
+> implemented: a durable SQLAlchemy/Postgres metadata store behind the FastAPI control plane,
+> with MLflow/MinIO wired defensively. Serving is an OpenAI-compatible proxy (see §4.5). See
+> `ROADMAP.md` for the path to full functionality.
 
 ## 1. Introduction
 
 ### Purpose
 
-A local ML experimentation platform demo that runs on an Apple Silicon workstation (e.g. an
-M-series Mac with large unified memory). It demonstrates the core architecture of a
+A local ML experimentation platform that runs on an Apple Silicon workstation (e.g. an
+M-series Mac with large unified memory). It implements the core architecture of a
 production ML platform at local scale: Python SDK, framework adapters, experiment tracking,
 model registry, artifact storage, evaluation jobs, and local model serving — showing how ML
 practitioners move from experimentation to registration, evaluation, and local deployment
@@ -43,7 +44,7 @@ versioning, production compliance workflows, large-scale inference traffic manag
 | MinIO             | S3-compatible local object storage for artifacts.                                     |
 | Model Registry    | System of record for model names, versions, artifacts, metadata, lifecycle state.     |
 | Artifact          | File/dir produced by an experiment (weights, configs, reports, logs).                 |
-| Evaluation Job    | Background job that evaluates a model version against a dataset and records metrics.   |
+| Evaluation Job    | Background job that evaluates a model version against a dataset and records metrics.  |
 | Control Plane     | Backend API + services managing metadata, jobs, registry state, lifecycle.            |
 | Serving Runtime   | Local inference service that loads a model and exposes prediction/chat APIs.          |
 | Framework Adapter | SDK module translating framework-specific formats into shared platform primitives.    |
@@ -64,7 +65,8 @@ artifacts.
    models, evaluations, deployments, jobs.
 4. **Local reproducibility** — entire system via Docker Compose, local services.
 5. **Extensibility** — add adapters, serving backends, evaluation types without redesign.
-6. **Demo clarity** — show architecture, SDK design, backend APIs, lifecycle thinking.
+6. **Operational clarity** — make architecture, SDK design, backend APIs, and lifecycle
+   behavior easy to inspect.
 
 ### System context
 
@@ -111,7 +113,7 @@ boundaries, not a microservices-heavy production platform.
 | Artifact Storage    | MinIO                                         |
 | Queue               | Redis                                         |
 | Worker              | Custom Python worker (RQ/Celery/Dramatiq opt) |
-| Serving             | Ollama or MLX-LM server                       |
+| Serving             | OpenAI-compatible proxy → Ollama / MLX-LM / llama.cpp / vLLM |
 | UI                  | MLflow UI, optional Streamlit                 |
 | Packaging           | uv / Hatchling                                |
 | Infrastructure      | Docker Compose                                |
@@ -207,7 +209,7 @@ Public API:
 ```python
 import localml as ml
 
-with ml.start_run(project="demo", config={"lr": 0.001}) as run:
+with ml.start_run(project="local", config={"lr": 0.001}) as run:
     ml.log_metrics({"accuracy": 0.91})
     ml.log_artifact("outputs/model.safetensors")
     version = ml.mlx.log_model(name="local-assistant", model_dir="./model",
@@ -274,11 +276,16 @@ compute metrics → save report to MinIO → log metrics to MLflow → update Po
 failure: mark `failed`, store reason + traceback summary, bounded retries, preserve partial
 logs.
 
-### 4.5 Local inference service
+### 4.5 Local serving (OpenAI-compatible proxy)
 
-Serves registered models locally. Endpoints: `POST /load`, `POST /predict`,
-`POST /v1/chat/completions`, `GET /health`, `GET /models`. Backends: Ollama, MLX, or a
-simple custom wrapper. Reports load failures to the control plane.
+localml does **not** ship a bespoke inference server. Every mainstream local runtime — Ollama,
+MLX-LM, llama.cpp, vLLM — already exposes the OpenAI API (`/v1/chat/completions`,
+`/v1/completions`), so serving is a thin **proxy**: a deployment resolves to a backend
+`base_url` + model id, and the control plane forwards OpenAI-shaped requests to it (streaming
+passthrough) and reports health. This keeps localml out of token decoding, gives users a
+familiar API, and lets the same `InferenceProvider` (an `openai` client with a configurable
+`base_url`) drive both Phase 3 batch prediction and Phase 4 online serving. Custom/non-OpenAI
+backends plug in via `ml.providers.register(...)`. See ROADMAP.md Phase 4.
 
 ## 5. Database Design
 
@@ -304,7 +311,7 @@ Tables: `users`, `projects`, `runs`, `metrics`, `params`, `artifacts`, `models`,
 `services/api/app/db.py`.
 
 Migrations: Alembic; additive where possible; avoid destructive changes in MVP; seed a
-default local user + demo project; provide a reset script.
+default local user and project; provide a reset script.
 
 ## 6. External Interfaces
 
@@ -316,7 +323,7 @@ unified memory, Metal/MLX runtime, local Docker volumes.
 ## 7. Security Considerations
 
 MVP: local dev bearer token in `~/.localml/config.toml`; default local mode may bypass
-auth for demos. Single-user / simple project-ownership authorization. Local-only data in
+auth for local development. Single-user / simple project-ownership authorization. Local-only data in
 MinIO/Postgres volumes. No formal compliance target.
 
 Future: OIDC, mTLS service-to-service, fine-grained RBAC (viewer/contributor/maintainer/
@@ -334,9 +341,9 @@ scheduling.
 
 ## 9. Deployment Architecture
 
-Environments: Local Dev (Docker Compose, local volumes) and Local Demo (stable seed data,
-reproducible scripts, optional preloaded model). CI/CD: lint → typecheck → unit → API →
-integration (Compose stack) → package → demo smoke test.
+Environments: Local Dev (Docker Compose, local volumes) and Local Validation (stable seed
+data, reproducible scripts, optional preloaded model). CI/CD: lint → typecheck → unit →
+API → integration (Compose stack) → package → smoke test.
 
 ```mermaid
 flowchart TB
@@ -373,10 +380,10 @@ flowchart TB
 Unit (Pytest/Ruff/MyPy): SDK request construction + error handling, adapter serialization,
 API validation, lifecycle transitions, worker job handling, repository logic. Integration:
 Docker Compose stack covering create project → run → log → artifact → register → evaluate →
-deploy → query endpoint. E2E demo: start stack, run notebook/script, train/load small
+deploy → query endpoint. E2E smoke test: start stack, run notebook/script, train/load small
 model, log, register, evaluate, promote, deploy, call inference, validate. Quality gates:
 SDK coverage >80%, API route coverage >80%, docstrings on public SDK methods, OpenAPI
-schema checked in, smoke test passes from clean Compose start, demo under 10 min on target
+schema checked in, smoke test passes from clean Compose start, workflow under 10 min on target
 hardware.
 
 ## 11. Appendices
@@ -403,3 +410,4 @@ stateDiagram-v2
 | Version | Date       | Author                              | Changes                          |
 | ------- | ---------- | ----------------------------------- | -------------------------------- |
 | 0.1     | 2026-06-05 | Guenevere Prawiroatmodjo / ChatGPT  | Initial SDD draft.               |
+| 0.2     | 2026-07-01 | Guenevere Prawiroatmodjo            | Phase 1 landed: durable repository layer, DB-backed idempotency, seed/reset, pre-signed artifact/dataset upload. Serving reframed as an OpenAI-compatible proxy (§4.5). |

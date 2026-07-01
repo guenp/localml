@@ -11,7 +11,7 @@ from localml.types import EvaluationJob, ModelVersion
 
 
 def test_public_api_surface():
-    for name in ("start_run", "log_metrics", "evaluate", "deploy", "configure"):
+    for name in ("start_run", "log_metrics", "evaluate", "deploy", "configure", "datasets"):
         assert hasattr(ml, name)
     for fw in ("torch", "jax", "mlx", "huggingface"):
         assert hasattr(ml, fw)

@@ -20,7 +20,7 @@ def start_run(project: str, config: dict[str, Any] | None = None) -> Iterator[Ru
 
     Example::
 
-        with localml.start_run(project="demo", config={"lr": 1e-3}) as run:
+        with localml.start_run(project="local", config={"lr": 1e-3}) as run:
             localml.log_metrics({"accuracy": 0.91})
     """
     client = get_client()
