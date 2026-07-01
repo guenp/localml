@@ -64,6 +64,15 @@ def test_evaluation_wait_failure_raises():
         job.wait(timeout=5, poll_interval=0.01)
 
 
+def test_evaluation_wait_timeout_raises():
+    # A client that never leaves 'running' should trip the deadline.
+    job = EvaluationJob(
+        id="j3", model_version_id="mv", status="running", _client=_FakeClient("running")
+    )
+    with pytest.raises(EvaluationFailedError, match="timed out"):
+        job.wait(timeout=0.05, poll_interval=0.01)
+
+
 def test_model_version_is_dataholder():
     mv = ModelVersion(id="1", model_name="m", version=1, framework="mlx", artifact_uri="u")
     assert mv.status == "created"

@@ -7,10 +7,10 @@ methods that round-trip back through the API.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from ._polling import wait_for_terminal
 from .exceptions import EvaluationFailedError
 
 if TYPE_CHECKING:
@@ -75,20 +75,22 @@ class EvaluationJob:
     def wait(self, *, timeout: float = 600.0, poll_interval: float = 1.0) -> EvaluationJob:
         """Poll until the job reaches a terminal state.
 
-        Uses exponential backoff capped at 10s. Raises :class:`EvaluationFailedError`
-        if the job ends in ``failed``.
+        Uses the shared exponential-backoff poller (capped at 10s). Raises
+        :class:`EvaluationFailedError` if the job ends in ``failed`` or the timeout elapses.
         """
-        deadline = time.monotonic() + timeout
-        interval = poll_interval
-        while self.status not in self._TERMINAL:
-            if time.monotonic() > deadline:
-                raise EvaluationFailedError(
-                    f"evaluation {self.id} timed out (status={self.status})"
-                )
-            time.sleep(interval)
-            interval = min(interval * 2, 10.0)
-            self.refresh()
-        if self.status == "failed":
+        try:
+            status = wait_for_terminal(
+                self.refresh,
+                lambda: self.status,
+                self._TERMINAL,
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+        except TimeoutError as exc:
+            raise EvaluationFailedError(
+                f"evaluation {self.id} timed out (status={self.status})"
+            ) from exc
+        if status == "failed":
             raise EvaluationFailedError(f"evaluation {self.id} failed")
         return self
 
