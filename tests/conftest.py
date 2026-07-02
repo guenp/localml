@@ -46,18 +46,22 @@ def offline_integrations(monkeypatch):  # type: ignore[no-untyped-def]
 
 
 @contextmanager
-def _app_with_sqlite() -> Iterator[object]:
-    """Yield the FastAPI app wired to a throwaway in-memory SQLite database."""
+def _app_with_sqlite(url: str = "sqlite://") -> Iterator[object]:
+    """Yield the FastAPI app wired to a throwaway SQLite database.
+
+    In-memory (the default) uses a single shared connection (StaticPool) — fine for the
+    single-threaded ``TestClient``. The live server runs endpoints across a threadpool, so it
+    passes a file URL instead, giving each request its own connection with normal commit
+    visibility (mirroring Postgres) rather than racing on one shared in-memory connection.
+    """
     from app.db import Base
     from app.main import app
     from app.session import get_db
 
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
-    )
+    engine_kwargs: dict = {"connect_args": {"check_same_thread": False}, "future": True}
+    if url in ("sqlite://", "sqlite:///:memory:"):
+        engine_kwargs["poolclass"] = StaticPool
+    engine = create_engine(url, **engine_kwargs)
     Base.metadata.create_all(engine)
     testing_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
@@ -122,12 +126,17 @@ def client():  # type: ignore[no-untyped-def]
 
 
 @pytest.fixture
-def sdk():  # type: ignore[no-untyped-def]
-    """The real localml SDK, configured against a live in-process control plane."""
+def sdk(tmp_path):  # type: ignore[no-untyped-def]
+    """The real localml SDK, configured against a live in-process control plane.
+
+    Uses a file-backed SQLite DB so the threaded server gets a connection per request and
+    read-your-writes holds across separate SDK calls.
+    """
     import localml as ml
     from localml.client import get_client, reset_client
 
-    with _app_with_sqlite() as app, _live_server(app) as base_url:
+    url = f"sqlite:///{tmp_path / 'localml_test.db'}"
+    with _app_with_sqlite(url) as app, _live_server(app) as base_url:
         reset_client()
         ml.configure(api_url=base_url, token=None, timeout=10, max_retries=3)
         try:

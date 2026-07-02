@@ -47,9 +47,15 @@ def apply_idempotency(
 
     A replay with the same key and body returns the stored response; the same key with a
     different body is a 409. Without a key, every call creates.
+
+    Commits before returning so the write is durable before the HTTP response is sent (the
+    ``get_db`` teardown commit can otherwise run after the response, breaking read-your-writes
+    for a client's immediate follow-up request).
     """
     if key is None:
-        return serialize(create())
+        response = serialize(create())
+        db.commit()
+        return response
 
     request_hash = _hash_payload(payload)
     existing = db.execute(
@@ -70,7 +76,7 @@ def apply_idempotency(
         )
     )
     try:
-        db.flush()
+        db.commit()
     except IntegrityError:  # concurrent replay raced us; return the stored response
         db.rollback()
         stored = db.execute(

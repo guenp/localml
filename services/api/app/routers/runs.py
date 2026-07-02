@@ -82,6 +82,7 @@ def log_metrics(
         run.status = req.status
         if req.status in _TERMINAL_RUN_STATES:
             run.completed_at = datetime.now(UTC)
+    db.commit()
     return {"status": "ok"}
 
 
@@ -90,6 +91,7 @@ def log_params(run_id: str, req: LogParamsRequest, db: Session = Depends(get_db)
     run = _load_run(db, run_id)
     for name, value in req.params.items():
         db.add(Param(run_id=run.id, name=name, value=str(value)))
+    db.commit()
     return {"status": "ok"}
 
 
@@ -106,7 +108,7 @@ def log_artifact(
         checksum=req.checksum,
     )
     db.add(artifact)
-    db.flush()
+    db.commit()
     return ArtifactResponse(
         id=artifact.id,
         uri=artifact.uri,
