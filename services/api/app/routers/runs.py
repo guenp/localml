@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import Artifact, Metric, Param, Project, Run
 from ..integrations import create_mlflow_run, create_presigned_put_url
 from ..repositories import apply_idempotency, get_or_create_project
@@ -100,10 +102,14 @@ def log_artifact(
     run_id: str, req: LogArtifactRequest, db: Session = Depends(get_db)
 ) -> ArtifactResponse:
     run = _load_run(db, run_id)
-    object_key = f"runs/{run_id}/{req.uri.rsplit('/', 1)[-1]}"
+    # The SDK sends RFC 8089 file:// URIs, so the basename arrives percent-encoded.
+    object_key = f"runs/{run_id}/{unquote(req.uri.rsplit('/', 1)[-1])}"
+    upload_url = create_presigned_put_url(object_key)
     artifact = Artifact(
         run_id=run.id,
-        uri=req.uri,
+        # Once the client uploads to the pre-signed target, the object store copy is the
+        # durable one — record it, not the client-local path.
+        uri=f"s3://{settings.minio_bucket}/{object_key}" if upload_url else req.uri,
         artifact_type=req.artifact_type,
         checksum=req.checksum,
     )
@@ -114,5 +120,5 @@ def log_artifact(
         uri=artifact.uri,
         artifact_type=artifact.artifact_type,
         checksum=artifact.checksum,
-        upload_url=create_presigned_put_url(object_key),
+        upload_url=upload_url,
     )

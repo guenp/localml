@@ -12,7 +12,6 @@ Both back onto a fresh in-memory SQLite database per test via a ``get_db`` depen
 
 from __future__ import annotations
 
-import socket
 import sys
 import threading
 import time
@@ -85,20 +84,14 @@ def _app_with_sqlite(url: str = "sqlite://") -> Iterator[object]:
         engine.dispose()
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return int(s.getsockname()[1])
-
-
 @contextmanager
 def _live_server(app: object) -> Iterator[str]:
     """Serve ``app`` on an ephemeral port via a background uvicorn thread."""
     import uvicorn
 
-    port = _free_port()
+    # port=0 lets the kernel assign a free port at bind time — no find-then-rebind race.
     config = uvicorn.Config(
-        app, host="127.0.0.1", port=port, log_level="warning", lifespan="on", ws="none"
+        app, host="127.0.0.1", port=0, log_level="warning", lifespan="on", ws="none"
     )
     server = uvicorn.Server(config)
     # Signal handlers can only be installed on the main thread; skip them in the server thread.
@@ -111,6 +104,7 @@ def _live_server(app: object) -> Iterator[str]:
             if time.time() > deadline:  # pragma: no cover - startup failure
                 raise RuntimeError("uvicorn did not start in time")
             time.sleep(0.02)
+        port = server.servers[0].sockets[0].getsockname()[1]
         yield f"http://127.0.0.1:{port}"
     finally:
         server.should_exit = True

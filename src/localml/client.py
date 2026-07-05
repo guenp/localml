@@ -102,12 +102,31 @@ class Client:
         )
 
     def upload_file(self, url: str, path: str) -> None:
-        """PUT a local file to a pre-signed URL, raising :class:`ArtifactUploadError`."""
-        try:
-            resp = httpx.put(url, content=Path(path).read_bytes(), timeout=self.config.timeout)
-            resp.raise_for_status()
-        except Exception as exc:
-            raise ArtifactUploadError(f"failed to upload {path}: {exc}") from exc
+        """PUT a local file to a pre-signed URL, raising :class:`ArtifactUploadError`.
+
+        Streams from disk (bundles can be multi-GB) and retries transient failures — a
+        pre-signed PUT is idempotent. Deliberately does not reuse ``self._http``: its
+        ``Authorization`` header would clash with the URL's query-string signature.
+        """
+        attempts = max(1, self.config.max_retries)
+        last_error: Exception | str | None = None
+        for attempt in range(attempts):
+            try:
+                with Path(path).open("rb") as fh:
+                    resp = httpx.put(url, content=fh, timeout=self.config.timeout)
+            except httpx.TransportError as exc:  # network-level, retry
+                last_error = exc
+            except Exception as exc:
+                raise ArtifactUploadError(f"failed to upload {path}: {exc}") from exc
+            else:
+                if resp.is_success:
+                    return
+                last_error = f"HTTP {resp.status_code}: {resp.text}"
+                if resp.status_code not in _RETRYABLE_STATUS:
+                    break
+            if attempt < attempts - 1:
+                time.sleep(min(2**attempt, 5))
+        raise ArtifactUploadError(f"failed to upload {path}: {last_error}")
 
     def complete_run(self, run_id: str, status: str) -> None:
         self._request("POST", f"/runs/{run_id}/metrics", json={"metrics": {}, "status": status})

@@ -63,11 +63,11 @@ than bolted on as a parallel subsystem. Three corrections from design review are
 - [x] Artifact staging + checksum before the registry record is finalized (SHA-256 +
       pre-signed upload when MinIO is available).
 - [x] Adapter serialization: `base.package_dir` bundles model dirs (tar.gz + per-file manifest
-      + content digest) and captures framework versions; mlx/huggingface fully; torch/jax
-      serialize `state_dict`/checkpoint when the framework is importable. (Orbax shape/dtype
-      capture deferred to Phase 3.)
+      + content digest, symlinks dereferenced) and captures framework versions; mlx/huggingface
+      fully; torch saves `state_dict` when torch is importable. (jax Orbax serialization +
+      shape/dtype capture deferred to Phase 3 — params/state are flagged as provided only.)
 - [x] Job-handle polling with exponential backoff (`.wait()`) shared via
-      `_polling.wait_for_terminal` (ready for prediction + eval).
+      `_polling.wait_for_terminal` (ready for Phase 3 job handles).
 - [x] Config precedence: explicit args → env vars → `~/.localml/config.toml` → defaults.
 - [x] Contract tests pinning SDK payloads/routes to the OpenAPI schema.
 

@@ -126,3 +126,72 @@ def test_sha256_file_matches_hashlib(tmp_path):
     payload = b"the quick brown fox" * 5000  # exceed the read chunk size
     f.write_bytes(payload)
     assert sha256_file(f) == hashlib.sha256(payload).hexdigest()
+
+
+# -- upload_file ------------------------------------------------------------------
+
+
+def _upload_client(max_retries: int = 3):  # type: ignore[no-untyped-def]
+    from localml.client import Client
+
+    return Client(Config(api_url="http://unused", token=None, timeout=1, max_retries=max_retries))
+
+
+def test_upload_file_streams_from_disk(tmp_path, monkeypatch):
+    import httpx
+
+    from localml import client as client_mod
+
+    f = tmp_path / "bundle.tar.gz"
+    f.write_bytes(b"payload-bytes")
+    seen = {}
+
+    def fake_put(url, content=None, timeout=None):  # type: ignore[no-untyped-def]
+        assert hasattr(content, "read")  # a file object, not the whole file in memory
+        seen["body"] = content.read()
+        return httpx.Response(200, request=httpx.Request("PUT", url))
+
+    monkeypatch.setattr(client_mod.httpx, "put", fake_put)
+    _upload_client().upload_file("http://minio/presigned", str(f))
+    assert seen["body"] == b"payload-bytes"
+
+
+def test_upload_file_retries_transient_then_succeeds(tmp_path, monkeypatch):
+    import httpx
+
+    from localml import client as client_mod
+
+    f = tmp_path / "a.bin"
+    f.write_bytes(b"x")
+    statuses = iter([503, 200])
+    attempts = []
+
+    def fake_put(url, content=None, timeout=None):  # type: ignore[no-untyped-def]
+        attempts.append(content.read())
+        return httpx.Response(next(statuses), request=httpx.Request("PUT", url))
+
+    monkeypatch.setattr(client_mod.httpx, "put", fake_put)
+    monkeypatch.setattr(client_mod.time, "sleep", lambda _s: None)
+    _upload_client().upload_file("http://minio/presigned", str(f))
+    # The file is reopened per attempt, so the retry re-sends the full payload.
+    assert attempts == [b"x", b"x"]
+
+
+def test_upload_file_client_error_fails_without_retry(tmp_path, monkeypatch):
+    import httpx
+
+    from localml import client as client_mod
+    from localml.exceptions import ArtifactUploadError
+
+    f = tmp_path / "a.bin"
+    f.write_bytes(b"x")
+    calls = []
+
+    def fake_put(url, content=None, timeout=None):  # type: ignore[no-untyped-def]
+        calls.append(1)
+        return httpx.Response(403, text="denied", request=httpx.Request("PUT", url))
+
+    monkeypatch.setattr(client_mod.httpx, "put", fake_put)
+    with pytest.raises(ArtifactUploadError, match="403"):
+        _upload_client().upload_file("http://minio/presigned", str(f))
+    assert calls == [1]  # 403 is not transient; no pointless retries

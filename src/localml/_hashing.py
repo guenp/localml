@@ -19,3 +19,8 @@ def sha256_file(path: str | Path) -> str:
         for block in iter(lambda: fh.read(_CHUNK), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def sha256_bytes(data: bytes) -> str:
+    """Return the hex SHA-256 of an in-memory payload."""
+    return hashlib.sha256(data).hexdigest()

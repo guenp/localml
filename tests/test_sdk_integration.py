@@ -95,3 +95,15 @@ def test_log_artifact_records_checksum(sdk, tmp_path):
     assert record["checksum"] == sha256_file(artifact)
     # No MinIO in tests, so there is no upload target and nothing to PUT.
     assert record["upload_url"] is None
+
+
+def test_log_artifact_accepts_directory(sdk, tmp_path):
+    d = tmp_path / "ckpt"
+    (d / "sub").mkdir(parents=True)
+    (d / "a.bin").write_bytes(b"a")
+    (d / "sub" / "b.bin").write_bytes(b"b")
+
+    with ml.start_run(project="local", config={}):
+        ml.log_artifact(str(d), artifact_type="dir")
+    # The directory was bundled next to itself and recorded without error.
+    assert (tmp_path / "ckpt.tar.gz").exists()

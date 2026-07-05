@@ -25,14 +25,13 @@ def log_pretrained(
         ml.huggingface.log_pretrained(name="hf-assistant", model_dir="./model")
     """
     path = base.require_dir(model_dir, required_files=["config.json"])
-    bundle, checksum, files = base.package_dir(path)
-    meta: dict[str, Any] = {
-        "source": "huggingface",
-        "transformers_version": base.framework_version("transformers"),
-        "checksum": checksum,
-        "manifest": files,
-    }
-    meta.update(metadata or {})
-    return base.register(
-        name=name, framework="huggingface", artifact_uri=base.stage_artifact(bundle), metadata=meta
+    return base.package_and_register(
+        path,
+        name=name,
+        framework="huggingface",
+        meta={
+            "source": "huggingface",
+            "transformers_version": base.framework_version("transformers"),
+        },
+        metadata=metadata,
     )

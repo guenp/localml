@@ -1,7 +1,8 @@
 """Shared job-handle polling.
 
-Prediction and evaluation jobs both run on the background worker and expose a ``.wait()``.
-This is the one place the polling loop (exponential backoff, deadline) lives so both share it.
+Evaluation jobs run on the background worker and expose a ``.wait()``. This is the one place
+the polling loop (exponential backoff, deadline) lives, so the Phase 3+ job handles (batch
+prediction, fine-tuning) share it rather than growing their own.
 """
 
 from __future__ import annotations
