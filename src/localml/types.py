@@ -52,6 +52,25 @@ class Dataset:
 
 
 @dataclass
+class PromptVersion:
+    """Versioned prompt template registered with the control plane."""
+
+    id: str
+    project: str
+    name: str
+    version: str
+    template: str
+    variables: list[str] = field(default_factory=list)
+    _client: Client | None = field(default=None, repr=False, compare=False)
+
+    def render(self, **variables: Any) -> str:
+        """Render server-side with exactly the declared variables (missing/extra → error)."""
+        if self._client is None:
+            raise RuntimeError("prompt version is not bound to a client")
+        return self._client.render_prompt(self.name, self.version, variables)
+
+
+@dataclass
 class EvaluationJob:
     """Background job that evaluates a model version against a dataset."""
 
