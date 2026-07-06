@@ -87,21 +87,27 @@ scored (and re-scored) without re-running inference, and variants can be compare
 - [x] SDK (`ml.prompts.register/get/render`, `PromptVersion.render(**vars)`) + CLI
       (`localml prompts register/get/render`).
 
-### M2 — Prediction jobs (run on the worker)
+### M2 — Prediction jobs (run on the worker) ✅
 
-- [ ] `PredictionJob` model: resolves model + dataset + prompt + inference config + provider.
-- [ ] **`InferenceProvider` interface** (`generate(prompt, config) -> InferenceResult`). The
-      default provider is a thin **OpenAI-compatible client** (the `openai` SDK pointed at a
-      configurable `base_url`) — Ollama, MLX-LM, llama.cpp, and vLLM all speak the OpenAI
+- [x] `PredictionJob` model: resolves model + dataset + prompt (ids or `name:version`) +
+      inference config + provider; pre-flights prompt variables against the dataset's
+      registered `columns` (422 before any inference). Alembic `0003_prediction_jobs`.
+- [x] **`InferenceProvider` interface** (`generate(prompt, config) -> InferenceResult`). The
+      default provider is a thin **OpenAI-compatible client** (httpx against a configurable
+      `base_url`) — Ollama, MLX-LM, llama.cpp, and vLLM all speak the OpenAI
       `/v1/chat/completions` API, so one provider covers every local backend. No bespoke
-      inference protocol.
-- [ ] Worker renders prompts per dataset row and runs inference; **`batch_size` =
-      concurrency** of in-flight requests, not true batching.
-- [ ] `PredictionResult` JSONL writer (input, rendered_prompt, output, latency, token
-      counts, error) with an indexed summary; per-shard/buffered writes.
-- [ ] Resumability + idempotent retries: track `completed_examples`; errored examples still
-      emit a result row so evals can score around them.
-- [ ] SDK handle with `.wait()` and `.results()`; CLI `predictions run/status/results`.
+      inference protocol. A deterministic `echo` provider covers pipeline smoke tests/CI.
+- [x] Worker renders prompts per dataset row and runs inference; **`batch_size` =
+      concurrency** of in-flight requests, not true batching. The worker runs from the API
+      image (`python -m app.worker`); without Redis, jobs fall back to an in-process
+      background thread so the standalone flow completes.
+- [x] `PredictionResult` JSONL writer (input, rendered_prompt, output, latency, token
+      counts, error) with a summary on the job (counts + duration); buffered per-batch
+      appends, uploaded to MinIO when available.
+- [x] Resumability + idempotent retries: track `completed_examples` (checkpointed per
+      batch); errored examples still emit a result row so evals can score around them.
+- [x] SDK `ml.predict(...)` handle with `.wait()` and `.results()`; CLI
+      `predictions run/status/results`.
 
 ### M3 — Evaluation jobs (score stored results)
 
