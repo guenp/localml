@@ -86,6 +86,7 @@ def delete_deployment(deployment_id: str, db: Session = Depends(get_db)) -> dict
         raise HTTPException(status.HTTP_404_NOT_FOUND, "deployment not found")
     dep.status = "inactive"
     dep.updated_at = datetime.now(UTC)
+    db.commit()
     return {"status": "inactive"}
 
 

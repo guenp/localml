@@ -26,7 +26,15 @@ def log_model(
         ml.mlx.log_model(name="assistant", model_dir="./mlx_model", quantization="4bit")
     """
     path = base.require_dir(model_dir)
-    meta: dict[str, Any] = {"runtime": "mlx", "quantization": quantization}
-    meta.update(metadata or {})
-    artifact_uri = base.stage_artifact(path)
-    return base.register(name=name, framework="mlx", artifact_uri=artifact_uri, metadata=meta)
+    return base.package_and_register(
+        path,
+        name=name,
+        framework="mlx",
+        meta={
+            "runtime": "mlx",
+            "quantization": quantization,
+            # MLX exposes its version on mlx.core, not the top-level package.
+            "mlx_version": base.framework_version("mlx.core"),
+        },
+        metadata=metadata,
+    )

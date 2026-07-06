@@ -98,7 +98,14 @@ python-version = "3.11"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 xfail_strict = true
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # Third-party DeprecationWarnings from the uvicorn/mlflow stack booted by the live-server
+    # integration tests. Scoped to exact messages so our own warnings still fail the suite.
+    "ignore:SelectableGroups dict interface is deprecated:DeprecationWarning",
+    "ignore:websockets.legacy is deprecated:DeprecationWarning",
+    "ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning",
+]
 addopts = "--tb=short --cov=localml --cov-report=term-missing"
 
 [tool.coverage.run]

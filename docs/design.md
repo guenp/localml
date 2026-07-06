@@ -220,6 +220,12 @@ with ml.start_run(project="local", config={"lr": 0.001}) as run:
     deployment = ml.deploy(model=version, target="local")
 ```
 
+**One idiom.** The SDK is a **functional, module-level** surface (`ml.start_run`,
+`ml.log_metrics`, `ml.evaluate`, `ml.deploy`, `ml.datasets.*`, framework adapters). There is
+no parallel `Client()` object in the public API — the HTTPX `Client` is an internal transport
+resolved via a process-wide default (`ml.configure(...)`), so notebook code stays terse.
+Framework adapters are the one namespaced exception, because they are framework-specific.
+
 Typed exceptions: `LocalMLError`, `AuthenticationError`, `ValidationError`,
 `ArtifactUploadError`, `ModelRegistrationError`, `EvaluationFailedError`, `DeploymentError`.
 

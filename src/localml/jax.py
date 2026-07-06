@@ -35,14 +35,26 @@ def log_checkpoint(
             checkpoint_format="orbax",
         )
 
-    Scaffold note: real Orbax serialization + sharding capture land in Phase 2.
+    Scaffold note: real Orbax serialization + sharding capture land in Phase 3 — until then
+    only the contents of ``checkpoint_dir`` are packaged; in-memory ``params``/``state`` are
+    recorded as provided but not serialized.
     """
-    meta: dict[str, Any] = {"checkpoint_format": checkpoint_format, "config": config or {}}
-    meta.update(metadata or {})
-
     target = Path(checkpoint_dir) if checkpoint_dir else Path(f"./.localml/jax/{name}")
     target.mkdir(parents=True, exist_ok=True)
-    # TODO(phase2): orbax.checkpoint save of params/state; capture shape/dtype + jax version.
-    artifact_uri = base.stage_artifact(target)
+    # TODO(phase3): Orbax save of params/state + shape/dtype capture when jax/orbax are present.
 
-    return base.register(name=name, framework="jax", artifact_uri=artifact_uri, metadata=meta)
+    return base.package_and_register(
+        target,
+        name=name,
+        framework="jax",
+        meta={
+            "checkpoint_format": checkpoint_format,
+            "config": config or {},
+            "jax_version": base.framework_version("jax"),
+            # "provided", not "serialized": the bundle carries only checkpoint_dir contents
+            # until the Phase 3 Orbax save lands.
+            "params_provided": params is not None,
+            "state_provided": state is not None,
+        },
+        metadata=metadata,
+    )

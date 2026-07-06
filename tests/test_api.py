@@ -136,6 +136,24 @@ def test_artifact_registration_returns_record(client):  # type: ignore[no-untype
     assert body["upload_url"] is None
 
 
+def test_artifact_presigned_stores_object_uri(client, monkeypatch):  # type: ignore[no-untyped-def]
+    """With MinIO available, the record points at the object store, not the client's disk,
+    and the object key is the decoded filename (file:// URIs arrive percent-encoded)."""
+    from app.config import settings
+    from app.routers import runs as runs_router
+
+    monkeypatch.setattr(
+        runs_router, "create_presigned_put_url", lambda key: f"http://minio/{key}?sig=x"
+    )
+    rid = client.post("/runs", json={"project": "local", "config": {}}).json()["id"]
+    body = client.post(
+        f"/runs/{rid}/artifacts",
+        json={"uri": "file:///tmp/my%20model.pt", "artifact_type": "model"},
+    ).json()
+    assert body["uri"] == f"s3://{settings.minio_bucket}/runs/{rid}/my model.pt"
+    assert body["upload_url"] == f"http://minio/runs/{rid}/my model.pt?sig=x"
+
+
 def test_dataset_conflict_on_duplicate_version(client):  # type: ignore[no-untyped-def]
     body = {"project": "local", "name": "ds", "artifact_uri": "u", "version": "v1", "rows": []}
     assert client.post("/datasets", json=body).status_code == 201

@@ -9,7 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ._hashing import sha256_file
 from ._state import get_current_run
+from .adapters import base
 from .client import get_client
 from .types import Deployment, EvaluationJob, ModelVersion
 
@@ -27,16 +29,31 @@ def log_params(params: dict[str, Any]) -> None:
 
 
 def log_artifact(path: str, *, artifact_type: str = "file") -> None:
-    """Register a local artifact with the active run.
+    """Stage a local artifact for the active run.
 
-    Note: in this scaffold the path is recorded as-is. Real uploads to MinIO (direct or
-    pre-signed URL) land in Phase 2 — see ROADMAP.md.
+    Computes a SHA-256 checksum, finalizes the registry record (which returns a pre-signed
+    upload target when MinIO is available), and uploads the bytes. When no upload target is
+    returned (e.g. local dev without MinIO) the ``file://`` URI is recorded as-is. A directory
+    is bundled into a ``.tar.gz`` first (same packaging as the framework adapters), with the
+    manifest-derived content digest as its checksum.
     """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"artifact path does not exist: {path}")
+    if p.is_dir():
+        p, checksum, _ = base.package_dir(p)
+    else:
+        checksum = sha256_file(p)
     run = get_current_run()
-    get_client().log_artifact(run.id, uri=str(p.resolve()), artifact_type=artifact_type)
+    client = get_client()
+    record = client.log_artifact(
+        run.id,
+        uri=base.stage_artifact(p),
+        artifact_type=artifact_type,
+        checksum=checksum,
+    )
+    if upload_url := record.get("upload_url"):
+        client.upload_file(upload_url, str(p))
 
 
 def register_model(

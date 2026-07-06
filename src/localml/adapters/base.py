@@ -8,9 +8,12 @@ helpers so the platform core stays framework-neutral.
 
 from __future__ import annotations
 
+import importlib
+import tarfile
 from pathlib import Path
 from typing import Any
 
+from .._hashing import sha256_bytes, sha256_file
 from ..client import get_client
 from ..exceptions import ValidationError
 from ..types import ModelVersion
@@ -27,12 +30,44 @@ def require_dir(model_dir: str | Path, *, required_files: list[str] | None = Non
     return path
 
 
-def stage_artifact(path: Path) -> str:
-    """Stage a local artifact and return its URI.
+def manifest(path: Path) -> dict[str, str]:
+    """Map each file under ``path`` (relative POSIX path) to its SHA-256."""
+    files = sorted(p for p in path.rglob("*") if p.is_file())
+    return {p.relative_to(path).as_posix(): sha256_file(p) for p in files}
 
-    Scaffold behavior: returns a ``file://`` URI pointing at the resolved path. Phase 2
-    replaces this with a real MinIO upload (direct or pre-signed) plus checksum.
+
+def content_digest(file_manifest: dict[str, str]) -> str:
+    """Stable digest of a manifest — identifies contents independent of packaging/timestamps."""
+    lines = "\n".join(f"{name}:{digest}" for name, digest in sorted(file_manifest.items()))
+    return sha256_bytes(lines.encode())
+
+
+def package_dir(path: Path) -> tuple[Path, str, dict[str, str]]:
+    """Bundle a model directory into a ``.tar.gz`` next to it.
+
+    Returns ``(bundle_path, content_digest, manifest)``. The digest is derived from the file
+    manifest (not the gzip bytes) so it is reproducible across runs. Symlinks are dereferenced
+    so the archive carries the same bytes the manifest hashed (Hugging Face snapshot dirs are
+    symlink farms into a blob cache).
     """
+    files = manifest(path)
+    bundle = path.parent / f"{path.name}.tar.gz"
+    with tarfile.open(bundle, "w:gz", dereference=True) as tar:
+        for rel in sorted(files):
+            tar.add(path / rel, arcname=rel)
+    return bundle, content_digest(files), files
+
+
+def framework_version(module: str) -> str | None:
+    """Best-effort ``__version__`` of an optional framework, or ``None`` if not importable."""
+    try:
+        return getattr(importlib.import_module(module), "__version__", None)
+    except Exception:
+        return None
+
+
+def stage_artifact(path: Path) -> str:
+    """Return a ``file://`` URI for a staged artifact (directory or bundle)."""
     return path.resolve().as_uri()
 
 
@@ -51,4 +86,25 @@ def register(
         framework=framework,
         artifact_uri=artifact_uri,
         metadata=base_meta,
+    )
+
+
+def package_and_register(
+    path: Path,
+    *,
+    name: str,
+    framework: str,
+    meta: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+) -> ModelVersion:
+    """Bundle ``path``, merge metadata, and register the result — the shared adapter tail.
+
+    ``meta`` holds the adapter's framework-specific keys; user-supplied ``metadata`` overrides
+    those, but never the derived integrity fields (``checksum``/``manifest``), which must
+    describe the actual bundle.
+    """
+    bundle, checksum, files = package_dir(path)
+    merged: dict[str, Any] = {**meta, **(metadata or {}), "checksum": checksum, "manifest": files}
+    return register(
+        name=name, framework=framework, artifact_uri=stage_artifact(bundle), metadata=merged
     )

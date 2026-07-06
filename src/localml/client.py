@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from .config import Config, get_config
 from .exceptions import (
+    ArtifactUploadError,
     AuthenticationError,
     DeploymentError,
     LocalMLError,
@@ -80,18 +82,51 @@ class Client:
         )
         return Run(id=data["id"], project=data["project"], status=data.get("status", "running"))
 
+    def get_run(self, run_id: str) -> Run:
+        data = self._request("GET", f"/runs/{run_id}")
+        return Run(id=data["id"], project=data["project"], status=data.get("status", "running"))
+
     def log_metrics(self, run_id: str, metrics: dict[str, float], step: int | None = None) -> None:
         self._request("POST", f"/runs/{run_id}/metrics", json={"metrics": metrics, "step": step})
 
     def log_params(self, run_id: str, params: dict[str, Any]) -> None:
         self._request("POST", f"/runs/{run_id}/params", json={"params": params})
 
-    def log_artifact(self, run_id: str, uri: str, artifact_type: str) -> None:
-        self._request(
+    def log_artifact(
+        self, run_id: str, uri: str, artifact_type: str, checksum: str | None = None
+    ) -> dict[str, Any]:
+        return self._request(
             "POST",
             f"/runs/{run_id}/artifacts",
-            json={"uri": uri, "artifact_type": artifact_type},
+            json={"uri": uri, "artifact_type": artifact_type, "checksum": checksum},
         )
+
+    def upload_file(self, url: str, path: str) -> None:
+        """PUT a local file to a pre-signed URL, raising :class:`ArtifactUploadError`.
+
+        Streams from disk (bundles can be multi-GB) and retries transient failures — a
+        pre-signed PUT is idempotent. Deliberately does not reuse ``self._http``: its
+        ``Authorization`` header would clash with the URL's query-string signature.
+        """
+        attempts = max(1, self.config.max_retries)
+        last_error: Exception | str | None = None
+        for attempt in range(attempts):
+            try:
+                with Path(path).open("rb") as fh:
+                    resp = httpx.put(url, content=fh, timeout=self.config.timeout)
+            except httpx.TransportError as exc:  # network-level, retry
+                last_error = exc
+            except Exception as exc:
+                raise ArtifactUploadError(f"failed to upload {path}: {exc}") from exc
+            else:
+                if resp.is_success:
+                    return
+                last_error = f"HTTP {resp.status_code}: {resp.text}"
+                if resp.status_code not in _RETRYABLE_STATUS:
+                    break
+            if attempt < attempts - 1:
+                time.sleep(min(2**attempt, 5))
+        raise ArtifactUploadError(f"failed to upload {path}: {last_error}")
 
     def complete_run(self, run_id: str, status: str) -> None:
         self._request("POST", f"/runs/{run_id}/metrics", json={"metrics": {}, "status": status})

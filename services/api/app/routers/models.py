@@ -130,4 +130,5 @@ def promote_version(
         exc = InvalidTransition(target.status, req.target_status)
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
     target.status = req.target_status
+    db.commit()
     return _to_response(target, model_name)

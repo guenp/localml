@@ -27,8 +27,10 @@ datasets, evaluation jobs, local serving) at single-workstation scale. Full spec
 ## Architecture notes
 
 - **Metadata source of truth = Postgres via SQLAlchemy.** Routers depend on a request-scoped
-  `Session` (`get_db`), which commits on success / rolls back on error. Repository helpers hold
-  cross-cutting logic; simple CRUD is inline in routers.
+  `Session` (`get_db`). Write handlers (and `apply_idempotency`) call `db.commit()` before
+  returning so the write is durable before the response is sent (read-your-writes); the
+  `get_db` teardown commit/rollback is only a safety net. New write endpoints must commit
+  explicitly. Repository helpers hold cross-cutting logic; simple CRUD is inline in routers.
 - **Tests use SQLite** (in-memory, `StaticPool`) via a `get_db` dependency override in
   `tests/conftest.py`. The ORM uses only portable types. Postgres runs Alembic migrations;
   SQLite/local dev uses `session.init_db()` (called from the app lifespan for `sqlite://`).
@@ -61,3 +63,4 @@ datasets, evaluation jobs, local serving) at single-workstation scale. Full spec
   boto3, Redis) over new bespoke machinery.
 - Update `ROADMAP.md` (checkboxes), `CHANGELOG.md` (`[Unreleased]`), and `IMPLEMENTATION_LOG.md`
   as you go. Don't commit/push unless asked.
+- **Never add a `Co-Authored-By` trailer (or any co-authorship) to commits or PRs.**

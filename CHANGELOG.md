@@ -8,6 +8,25 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- **Phase 2 — SDK end-to-end.** SDK↔API integration tests drive the real `localml` SDK against
+  a live in-process control plane (background uvicorn), plus an OpenAPI contract test pinning
+  the SDK's routes to the schema.
+- Artifact staging computes a SHA-256 checksum and uploads bytes to a pre-signed MinIO target
+  when available (`client.upload_file`, `ArtifactUploadError`). Uploads stream from disk and
+  retry transient failures; when an upload target exists the artifact record stores the
+  object-store URI (not the client-local path). `ml.log_artifact` also accepts directories,
+  bundling them like the adapters do.
+- Framework adapters package model directories into checksummed `.tar.gz` bundles with a
+  per-file manifest and capture framework versions (`base.package_dir`, `base.framework_version`,
+  shared `base.package_and_register`). Symlinked files are dereferenced into the bundle, user
+  metadata cannot override the derived `checksum`/`manifest`, and a failed `torch.save` raises
+  instead of silently registering a weightless bundle.
+- Shared job-handle polling (`_polling.wait_for_terminal`) behind `EvaluationJob.wait`, ready
+  for Phase 3 prediction jobs; `client.get_run`.
+- Documented the single functional SDK idiom (design §4.1).
+
+_Phase 1 (control plane core):_
+
 - Durable SQLAlchemy repository layer backing the control plane: routers use a request-scoped
   session (`app.session.get_db`); the in-memory store is removed. Postgres in production,
   SQLite for unit tests.

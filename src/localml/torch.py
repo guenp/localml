@@ -29,16 +29,25 @@ def log_model(
             model=model, name="classifier", example_input=batch, metadata={"architecture": "resnet"}
         )
 
-    Scaffold note: real ``state_dict`` serialization and schema inference land in Phase 2.
+    Scaffold note: input/output schema inference lands in Phase 3.
     """
-    meta: dict[str, Any] = {"task": None}
-    meta.update(metadata or {})
-    if example_input is not None:
-        meta["has_example_input"] = True
-
     target = Path(save_dir) if save_dir else Path(f"./.localml/torch/{name}")
     target.mkdir(parents=True, exist_ok=True)
-    # TODO(phase2): torch.save(model.state_dict(), target / "model.pt"); capture versions.
-    artifact_uri = base.stage_artifact(target)
+    try:
+        import torch  # ty: ignore[unresolved-import]
+    except ModuleNotFoundError:  # optional dependency absent: package what's already there
+        pass
+    else:  # torch is present — a failed save must not silently register a weightless bundle
+        torch.save(model.state_dict(), target / "model.pt")
 
-    return base.register(name=name, framework="pytorch", artifact_uri=artifact_uri, metadata=meta)
+    return base.package_and_register(
+        target,
+        name=name,
+        framework="pytorch",
+        meta={
+            "task": None,
+            "torch_version": base.framework_version("torch"),
+            "has_example_input": example_input is not None,
+        },
+        metadata=metadata,
+    )
