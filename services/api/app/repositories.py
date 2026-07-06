@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .db import Dataset, IdempotencyKey, Model, ModelVersion, Project, User
+from .db import Dataset, IdempotencyKey, Model, ModelVersion, Project, PromptVersion, User
 
 T = TypeVar("T")
 
@@ -157,6 +157,20 @@ def resolve_dataset(db: Session, ref: str) -> Dataset:
     if ds is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "dataset version not found")
     return ds
+
+
+def resolve_prompt(db: Session, ref: str) -> PromptVersion:
+    """Resolve a prompt id or ``name:version`` reference."""
+    by_id = db.get(PromptVersion, ref)
+    if by_id is not None:
+        return by_id
+    name, version = _split_reference(ref, "prompt")
+    prompt = db.execute(
+        select(PromptVersion).where(PromptVersion.name == name, PromptVersion.version == version)
+    ).scalar_one_or_none()
+    if prompt is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "prompt version not found")
+    return prompt
 
 
 def _split_reference(ref: str, resource: str) -> tuple[str, str]:
