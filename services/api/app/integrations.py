@@ -64,6 +64,38 @@ def register_mlflow_model(name: str) -> str | None:
         return None
 
 
+def upload_object(path: str, object_key: str) -> str | None:
+    """Upload a local file to MinIO and return its ``s3://`` URI, or ``None`` if unavailable."""
+    try:
+        import boto3
+    except ImportError:
+        return None
+
+    try:
+        client = boto3.client("s3", endpoint_url=settings.minio_endpoint)
+        client.upload_file(path, settings.minio_bucket, object_key)
+        return f"s3://{settings.minio_bucket}/{object_key}"
+    except Exception as exc:  # pragma: no cover - depends on external service
+        log.warning("MinIO upload failed: %s", exc)
+        return None
+
+
+def download_object(object_key: str, dest_path: str) -> bool:
+    """Download a MinIO object to a local path. Returns False when unavailable."""
+    try:
+        import boto3
+    except ImportError:
+        return False
+
+    try:
+        client = boto3.client("s3", endpoint_url=settings.minio_endpoint)
+        client.download_file(settings.minio_bucket, object_key, dest_path)
+        return True
+    except Exception as exc:  # pragma: no cover - depends on external service
+        log.warning("MinIO download failed: %s", exc)
+        return False
+
+
 def create_presigned_put_url(object_key: str) -> str | None:
     """Return a MinIO (S3) pre-signed PUT URL for ``object_key`` when boto3 is available."""
     try:

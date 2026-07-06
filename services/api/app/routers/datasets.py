@@ -50,6 +50,7 @@ def _to_response(dataset: Dataset, upload_url: str | None = None) -> DatasetResp
         artifact_uri=dataset.artifact_uri,
         row_count=dataset.row_count,
         example_ids=dataset.example_ids,
+        columns=dataset.columns,
         metadata=dataset.meta,
         upload_url=upload_url,
     )
@@ -88,6 +89,8 @@ def register_dataset(
             raise HTTPException(
                 status.HTTP_409_CONFLICT, f"dataset {req.name}:{version} already exists"
             )
+        # Keys every row provides — lets prediction jobs pre-flight prompt variables.
+        columns = sorted(set.intersection(*(set(r) for r in rows))) if rows else []
         dataset = Dataset(
             project_id=project.id,
             name=req.name,
@@ -95,6 +98,7 @@ def register_dataset(
             artifact_uri=req.artifact_uri,
             row_count=len(rows),
             example_ids=example_ids,
+            columns=columns,
             meta=req.metadata,
         )
         db.add(dataset)

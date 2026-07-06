@@ -132,6 +132,9 @@ class Dataset(Base):
     artifact_uri: Mapped[str] = mapped_column(Text)
     row_count: Mapped[int] = mapped_column(Integer, default=0)
     example_ids: Mapped[list] = mapped_column(JSON, default=list)
+    # Keys present in *every* row (intersection), captured at registration when rows are
+    # provided. Lets prediction jobs pre-flight prompt variables against the dataset.
+    columns: Mapped[list] = mapped_column(JSON, default=list)
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
     project: Mapped[Project] = relationship()
@@ -150,6 +153,34 @@ class PromptVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     project: Mapped[Project] = relationship()
+
+
+class PredictionJob(Base):
+    """Batch inference over a dataset: model + prompt + provider, run on the worker.
+
+    Decoupled from evaluation (roadmap Phase 3): outputs are written once as a JSONL
+    artifact (``results_uri``) and scored separately, so evals can re-run without
+    re-inferring. ``completed_examples`` tracks per-row progress for resumable retries.
+    """
+
+    __tablename__ = "prediction_jobs"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    model_version_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id"), index=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), index=True)
+    prompt_version_id: Mapped[str] = mapped_column(ForeignKey("prompt_versions.id"), index=True)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    provider: Mapped[str] = mapped_column(Text, default="openai")
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    completed_examples: Mapped[list] = mapped_column(JSON, default=list)
+    results_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    model_version: Mapped[ModelVersion] = relationship()
+    dataset: Mapped[Dataset] = relationship()
+    prompt_version: Mapped[PromptVersion] = relationship()
 
 
 class EvaluationJob(Base):

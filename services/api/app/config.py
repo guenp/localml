@@ -18,6 +18,13 @@ class Settings:
     serving_url: str = os.environ.get("SERVING_URL", "http://localhost:11434")
     api_token: str = os.environ.get("LOCALML_API_TOKEN", "local-dev-token")
     auth_bypass: bool = os.environ.get("LOCALML_AUTH_BYPASS", "true").lower() == "true"
+    # Where prediction-result JSONL files are written before (optional) upload to MinIO.
+    results_dir: str = os.environ.get(
+        "LOCALML_RESULTS_DIR", os.path.expanduser("~/.localml/results")
+    )
+    # When Redis is unreachable, run queued jobs on a background thread in-process so the
+    # standalone (SQLite, no-Docker) flow still completes. Never runs inline in a request.
+    inline_jobs: bool = os.environ.get("LOCALML_INLINE_JOBS", "true").lower() == "true"
 
 
 settings = Settings()

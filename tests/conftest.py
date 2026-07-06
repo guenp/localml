@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "services" / "api"))
 
 
 @pytest.fixture(autouse=True)
-def offline_integrations(monkeypatch):  # type: ignore[no-untyped-def]
+def offline_integrations(monkeypatch, tmp_path):  # type: ignore[no-untyped-def]
     """Neutralize optional-service hooks so unit tests never perform network I/O.
 
     In production these degrade gracefully on their own, but against an unreachable MLflow the
@@ -36,12 +36,21 @@ def offline_integrations(monkeypatch):  # type: ignore[no-untyped-def]
     the suite stays fast and hermetic; real MLflow/MinIO wiring is covered by the Compose
     integration stack (roadmap Phase 6).
     """
+    from app import prediction
+    from app.config import settings
     from app.routers import datasets, models, runs
 
     monkeypatch.setattr(runs, "create_mlflow_run", lambda *a, **k: None)
     monkeypatch.setattr(runs, "create_presigned_put_url", lambda *a, **k: None)
     monkeypatch.setattr(models, "register_mlflow_model", lambda *a, **k: None)
     monkeypatch.setattr(datasets, "create_presigned_put_url", lambda *a, **k: None)
+    monkeypatch.setattr(prediction, "upload_object", lambda *a, **k: None)
+    monkeypatch.setattr(prediction, "download_object", lambda *a, **k: False)
+    # Keep prediction-result files inside the test sandbox, and don't spawn background
+    # threads against the TestClient's shared in-memory SQLite connection. The ``sdk``
+    # fixture re-enables inline jobs — its file-backed database is thread-safe.
+    monkeypatch.setattr(settings, "results_dir", str(tmp_path / "localml-results"))
+    monkeypatch.setattr(settings, "inline_jobs", False)
 
 
 @contextmanager
@@ -120,15 +129,19 @@ def client():  # type: ignore[no-untyped-def]
 
 
 @pytest.fixture
-def sdk(tmp_path):  # type: ignore[no-untyped-def]
+def sdk(tmp_path, monkeypatch):  # type: ignore[no-untyped-def]
     """The real localml SDK, configured against a live in-process control plane.
 
     Uses a file-backed SQLite DB so the threaded server gets a connection per request and
-    read-your-writes holds across separate SDK calls.
+    read-your-writes holds across separate SDK calls. Inline job execution is on (no Redis
+    in tests), so prediction jobs complete in-process like the standalone flow.
     """
+    from app.config import settings
+
     import localml as ml
     from localml.client import get_client, reset_client
 
+    monkeypatch.setattr(settings, "inline_jobs", True)
     url = f"sqlite:///{tmp_path / 'localml_test.db'}"
     with _app_with_sqlite(url) as app, _live_server(app) as base_url:
         reset_client()
