@@ -76,6 +76,18 @@ class RegisterDatasetRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class RegisterPromptRequest(BaseModel):
+    name: str
+    template: str
+    project: str = "local"
+    version: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RenderPromptRequest(BaseModel):
+    variables: dict[str, Any] = Field(default_factory=dict)
+
+
 class ResolveReferenceRequest(BaseModel):
     resource_type: str
     reference: str
@@ -138,6 +150,22 @@ class DatasetResponse(BaseModel):
     example_ids: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     upload_url: str | None = None
+
+
+class PromptVersionResponse(BaseModel):
+    id: str
+    project: str
+    name: str
+    version: str
+    template: str
+    variables: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RenderPromptResponse(BaseModel):
+    name: str
+    version: str
+    rendered: str
 
 
 class ResolveReferenceResponse(BaseModel):

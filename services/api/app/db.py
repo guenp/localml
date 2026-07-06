@@ -137,6 +137,21 @@ class Dataset(Base):
     project: Mapped[Project] = relationship()
 
 
+class PromptVersion(Base):
+    __tablename__ = "prompt_versions"
+    __table_args__ = (UniqueConstraint("project_id", "name", "version", name="uq_prompt_version"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    version: Mapped[str] = mapped_column(Text)
+    template: Mapped[str] = mapped_column(Text)
+    variables: Mapped[list] = mapped_column(JSON, default=list)
+    meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    project: Mapped[Project] = relationship()
+
+
 class EvaluationJob(Base):
     __tablename__ = "evaluation_jobs"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)

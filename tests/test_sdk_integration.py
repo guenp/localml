@@ -63,6 +63,24 @@ def test_dataset_register_and_get(sdk):
     assert [d.version for d in versions] == ["v1"]
 
 
+def test_prompt_register_render_and_get(sdk):
+    from localml.exceptions import ValidationError
+
+    prompt = ml.prompts.register(name="qa", template="Q: {question}\nA:")
+    assert prompt.version == "v1"
+    assert prompt.variables == ["question"]
+
+    # The handle renders server-side, and mismatched variables map to the SDK error type.
+    assert prompt.render(question="why?") == "Q: why?\nA:"
+    with pytest.raises(ValidationError):
+        prompt.render(question="why?", bogus=1)
+
+    v2 = ml.prompts.register(name="qa", template="Q: {question}\nContext: {context}\nA:")
+    assert v2.version == "v2"
+    assert [p.version for p in ml.prompts.get("qa")] == ["v1", "v2"]
+    assert ml.prompts.render("qa", "v2", question="q", context="c") == "Q: q\nContext: c\nA:"
+
+
 def test_evaluate_queues_job(sdk):
     version = ml.register_model("m", artifact_uri="file:///tmp/m", framework="mlx")
     job = ml.evaluate(model=version, dataset="evalset:v1", metrics=["accuracy"])

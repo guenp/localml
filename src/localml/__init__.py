@@ -17,7 +17,7 @@ Public API::
 
 from __future__ import annotations
 
-from . import datasets, huggingface, jax, mlx, torch
+from . import datasets, huggingface, jax, mlx, prompts, torch
 from .config import Config, configure
 from .exceptions import (
     ArtifactUploadError,
@@ -30,7 +30,7 @@ from .exceptions import (
 )
 from .ops import deploy, evaluate, log_artifact, log_metrics, log_params, register_model
 from .run import start_run
-from .types import Dataset, Deployment, EvaluationJob, ModelVersion, Run
+from .types import Dataset, Deployment, EvaluationJob, ModelVersion, PromptVersion, Run
 
 __all__ = [
     "ArtifactUploadError",
@@ -44,6 +44,7 @@ __all__ = [
     "LocalMLError",
     "ModelRegistrationError",
     "ModelVersion",
+    "PromptVersion",
     "Run",
     "ValidationError",
     "configure",
@@ -56,6 +57,7 @@ __all__ = [
     "log_metrics",
     "log_params",
     "mlx",
+    "prompts",
     "register_model",
     "start_run",
     "torch",

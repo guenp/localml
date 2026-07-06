@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI
 
 from .auth import require_auth
 from .config import settings
-from .routers import datasets, deployments, evaluations, models, projects, resolve, runs
+from .routers import datasets, deployments, evaluations, models, projects, prompts, resolve, runs
 from .session import init_db
 
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +46,7 @@ app.include_router(projects.router, dependencies=_protected)
 app.include_router(runs.router, dependencies=_protected)
 app.include_router(models.router, dependencies=_protected)
 app.include_router(datasets.router, dependencies=_protected)
+app.include_router(prompts.router, dependencies=_protected)
 app.include_router(evaluations.router, dependencies=_protected)
 app.include_router(deployments.router, dependencies=_protected)
 app.include_router(resolve.router, dependencies=_protected)

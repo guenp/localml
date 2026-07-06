@@ -23,7 +23,7 @@ from .exceptions import (
     ModelRegistrationError,
     ValidationError,
 )
-from .types import Dataset, Deployment, EvaluationJob, ModelVersion, Run
+from .types import Dataset, Deployment, EvaluationJob, ModelVersion, PromptVersion, Run
 
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
@@ -212,6 +212,52 @@ class Client:
             )
             for item in data
         ]
+
+    # -- prompts ------------------------------------------------------------------
+
+    def register_prompt(
+        self,
+        *,
+        name: str,
+        template: str,
+        project: str = "local",
+        version: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> PromptVersion:
+        data = self._request(
+            "POST",
+            "/prompts",
+            idempotent=True,
+            json={
+                "name": name,
+                "template": template,
+                "project": project,
+                "version": version,
+                "metadata": metadata or {},
+            },
+        )
+        return self._prompt_from(data)
+
+    def get_prompts(self, name: str) -> list[PromptVersion]:
+        data = self._request("GET", f"/prompts/{name}")
+        return [self._prompt_from(item) for item in data]
+
+    def render_prompt(self, name: str, version: str, variables: dict[str, Any]) -> str:
+        data = self._request(
+            "POST", f"/prompts/{name}/versions/{version}/render", json={"variables": variables}
+        )
+        return data["rendered"]
+
+    def _prompt_from(self, data: dict[str, Any]) -> PromptVersion:
+        return PromptVersion(
+            id=data["id"],
+            project=data["project"],
+            name=data["name"],
+            version=data["version"],
+            template=data["template"],
+            variables=data.get("variables", []),
+            _client=self,
+        )
 
     # -- evaluations -------------------------------------------------------------
 

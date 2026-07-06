@@ -8,9 +8,10 @@ scale: a Python SDK, framework adapters, experiment tracking, a model registry, 
 storage, evaluation jobs, and local model serving.
 
 > Status: **under active development.** The control plane (Phase 1 — durable Postgres-backed
-> metadata, lifecycle, idempotency, dataset registry) and the Python SDK (Phase 2 — real HTTPX
-> client, run tracking, artifact checksums, framework-adapter packaging) are implemented and
-> tested. The prediction/evaluation loop and local serving proxy are next. See
+> metadata, lifecycle, idempotency, dataset registry), the Python SDK (Phase 2 — real HTTPX
+> client, run tracking, artifact checksums, framework-adapter packaging), and the prompt
+> registry (Phase 3 M1) are implemented and tested. Prediction/evaluation jobs and the local
+> serving proxy are next. See
 > [`ROADMAP.md`](./ROADMAP.md) for status and [`docs/design.md`](./docs/design.md) for the full
 > software design document.
 
@@ -23,6 +24,7 @@ localml/
 │   ├── client.py         # HTTPX client for the control plane (retry + idempotency)
 │   ├── ops.py            # ml.log_metrics / log_artifact / evaluate / deploy
 │   ├── datasets.py       # ml.datasets.register / get
+│   ├── prompts.py        # ml.prompts.register / get / render
 │   ├── config.py         # env → ~/.localml/config.toml → defaults
 │   ├── exceptions.py     # typed SDK errors
 │   ├── run.py            # run context manager
@@ -116,7 +118,43 @@ localml health
 localml config --api-url http://localhost:8000
 localml runs get <run_id>
 localml models get <name>
+localml prompts register <name> --template "..."   # or --file prompt.txt
+localml prompts render <name> <version> --var key=value
 ```
+
+## Prompt registry
+
+Prompts change more often than models, so they are versioned like one: an experiment is fully
+described by **model version + dataset version + prompt version** (e.g. `assistant:v3` +
+`eval-set:v1` + `qa:v2`), which is what makes eval results reproducible and comparable.
+Templates are plain `str.format` strings; the server extracts the `{placeholders}` at
+registration and stores them as the version's `variables`, so a prediction job (Phase 3 M2)
+can check that a dataset provides every variable *before* running inference. In the upcoming
+prediction loop, the worker renders the template against each dataset row and sends the result
+to the model — register two prompt versions, predict with both, and compare to pick the winner.
+
+```python
+import localml as ml
+
+prompt = ml.prompts.register(
+    name="qa",
+    template="You are a concise assistant.\nQ: {question}\nA:",
+)
+print(prompt.version, prompt.variables)   # v1 ['question']
+
+# Rendering happens server-side and requires exactly the declared variables —
+# a missing or extra variable (e.g. a typo'd dataset column) is an error.
+print(prompt.render(question="What is a model registry?"))
+
+ml.prompts.register(name="qa", template="Q: {question}\nThink step by step.\nA:")  # -> qa:v2
+print([p.version for p in ml.prompts.get("qa")])  # ['v1', 'v2']
+```
+
+Templates are sandboxed: only bare-identifier placeholders like `{question}` are allowed.
+Positional fields and attribute/index access (`{obj.attr}`, `{rows[0]}`) are rejected at
+registration, so rendering untrusted dataset rows can never traverse into object internals.
+Like models and datasets, prompts resolve by `name:version` (`qa:v2`) everywhere references
+are accepted.
 
 ## Development
 

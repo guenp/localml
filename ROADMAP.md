@@ -76,12 +76,16 @@ than bolted on as a parallel subsystem. Three corrections from design review are
 The core inference/eval workflow. Prediction and evaluation are decoupled so outputs can be
 scored (and re-scored) without re-running inference, and variants can be compared.
 
-### M1 — Prompt registry
+### M1 — Prompt registry ✅
 
-- [ ] `PromptVersion` model + `POST /prompts` / `GET /prompts/{name}`; versioned templates.
-- [ ] Template rendering with a **sandboxed** engine (Jinja2 sandbox or explicit
-      `str.format`); auto-extract `variables`; clear errors on missing/extra variables.
-- [ ] SDK (`ml.prompts.register/get`) + CLI (`localml prompts register`).
+- [x] `PromptVersion` model + `POST /prompts` / `GET /prompts/{name}` (+ per-version GET and
+      `POST .../render`); versioned templates with auto-incremented `v1`-style versions,
+      idempotency keys, and `name:version` support in `/resolve`.
+- [x] Template rendering with a **sandboxed** engine (explicit `str.format` restricted to bare
+      identifiers — attribute/index access and positional fields rejected at registration);
+      auto-extract `variables`; clear 422s on missing/extra variables.
+- [x] SDK (`ml.prompts.register/get/render`, `PromptVersion.render(**vars)`) + CLI
+      (`localml prompts register/get/render`).
 
 ### M2 — Prediction jobs (run on the worker)
 
