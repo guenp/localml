@@ -87,6 +87,51 @@ def test_prompts_render_rejects_malformed_var(stub):
     assert not stub.requests
 
 
+def test_predictions_run(stub):
+    result = runner.invoke(
+        cli.app,
+        [
+            "predictions",
+            "run",
+            "m:v1",
+            "evalset:v1",
+            "qa:v2",
+            "--provider",
+            "echo",
+            "--config",
+            '{"batch_size": 8}',
+        ],
+    )
+    assert result.exit_code == 0
+    method, path, kwargs = stub.requests[0]
+    assert (method, path) == ("POST", "/predictions")
+    assert kwargs["json"] == {
+        "model": "m:v1",
+        "dataset": "evalset:v1",
+        "prompt": "qa:v2",
+        "provider": "echo",
+        "config": {"batch_size": 8},
+    }
+    assert kwargs["idempotent"] is True
+
+
+def test_predictions_run_rejects_malformed_config(stub):
+    result = runner.invoke(
+        cli.app, ["predictions", "run", "m:v1", "d:v1", "p:v1", "--config", "not-json"]
+    )
+    assert result.exit_code != 0
+    assert not stub.requests
+
+
+def test_predictions_status_and_results(stub):
+    assert runner.invoke(cli.app, ["predictions", "status", "j1"]).exit_code == 0
+    assert runner.invoke(cli.app, ["predictions", "results", "j1"]).exit_code == 0
+    assert [r[:2] for r in stub.requests] == [
+        ("GET", "/predictions/j1"),
+        ("GET", "/predictions/j1/results"),
+    ]
+
+
 def test_runs_and_models_get(stub):
     assert runner.invoke(cli.app, ["runs", "get", "r1"]).exit_code == 0
     assert runner.invoke(cli.app, ["models", "get", "m"]).exit_code == 0

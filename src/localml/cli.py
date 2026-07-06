@@ -20,10 +20,12 @@ projects_app = typer.Typer(help="Manage projects")
 runs_app = typer.Typer(help="Inspect runs")
 models_app = typer.Typer(help="Inspect model versions")
 prompts_app = typer.Typer(help="Manage versioned prompt templates")
+predictions_app = typer.Typer(help="Run and inspect prediction jobs")
 app.add_typer(projects_app, name="projects")
 app.add_typer(runs_app, name="runs")
 app.add_typer(models_app, name="models")
 app.add_typer(prompts_app, name="prompts")
+app.add_typer(predictions_app, name="predictions")
 
 
 def _echo(obj: Any) -> None:
@@ -108,6 +110,47 @@ def prompts_render(
             "POST", f"/prompts/{name}/versions/{version}/render", json={"variables": variables}
         )
     )
+
+
+@predictions_app.command("run")
+def predictions_run(
+    model: str = typer.Argument(help="Model version id or name:version"),
+    dataset: str = typer.Argument(help="Dataset id or name:version"),
+    prompt: str = typer.Argument(help="Prompt version id or name:version"),
+    provider: str = typer.Option("openai", help="Inference provider (openai | echo)"),
+    config: str = typer.Option("{}", help="Inference config as JSON (batch_size, model, ...)"),
+) -> None:
+    """Queue a prediction job for a model + dataset + prompt triple."""
+    try:
+        config_obj = json.loads(config)
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter(f"--config must be valid JSON: {exc}") from exc
+    _echo(
+        get_client()._request(
+            "POST",
+            "/predictions",
+            idempotent=True,
+            json={
+                "model": model,
+                "dataset": dataset,
+                "prompt": prompt,
+                "provider": provider,
+                "config": config_obj,
+            },
+        )
+    )
+
+
+@predictions_app.command("status")
+def predictions_status(job_id: str) -> None:
+    """Fetch a prediction job's status and summary."""
+    _echo(get_client()._request("GET", f"/predictions/{job_id}"))
+
+
+@predictions_app.command("results")
+def predictions_results(job_id: str) -> None:
+    """Fetch a prediction job's per-example results."""
+    _echo(get_client()._request("GET", f"/predictions/{job_id}/results"))
 
 
 if __name__ == "__main__":
