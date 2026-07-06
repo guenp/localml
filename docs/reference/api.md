@@ -38,6 +38,19 @@ Framework adapters serialize + package a model and register it as a version:
   → `Dataset` — assigns stable per-row `example_id`s.
 - `localml.datasets.get(name)` → `list[Dataset]`
 
+## Prompts
+
+Versioned `str.format` templates with a sandboxed field grammar: only bare-identifier
+placeholders (`{question}`) are accepted — attribute/index access and positional fields are
+rejected at registration. Variables are auto-extracted server-side; rendering requires exactly
+the declared variables (missing or extra → `ValidationError`).
+
+- `localml.prompts.register(*, name, template, project="local", version=None, metadata=None)`
+  → `PromptVersion` — versions auto-increment (`v1`, `v2`, …) unless `version` is given.
+- `localml.prompts.get(name)` → `list[PromptVersion]`
+- `localml.prompts.render(name, version, **variables)` → `str`
+- `PromptVersion.render(**variables)` → `str` — renders server-side via the bound client.
+
 ## Job & deployment handles
 
 - `EvaluationJob.wait(*, timeout=600.0, poll_interval=1.0)` — polls with exponential backoff;

@@ -8,6 +8,13 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- **Phase 3 M1 — Prompt registry.** Versioned `str.format` prompt templates with a sandboxed
+  field grammar (bare identifiers only; attribute/index access rejected at registration) and
+  server-side variable extraction. `POST /prompts` (idempotent, auto-versioned) /
+  `GET /prompts/{name}` / `POST /prompts/{name}/versions/{version}/render` (422 on
+  missing/extra variables), prompts join `name:version` resolution in `/resolve`, plus the
+  `ml.prompts` SDK namespace (`register`/`get`/`render`, `PromptVersion.render(**vars)`) and a
+  `localml prompts` CLI group. Alembic migration `0002_prompt_registry`.
 - **Phase 2 — SDK end-to-end.** SDK↔API integration tests drive the real `localml` SDK against
   a live in-process control plane (background uvicorn), plus an OpenAPI contract test pinning
   the SDK's routes to the schema.
