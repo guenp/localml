@@ -13,7 +13,7 @@ from ._hashing import sha256_file
 from ._state import get_current_run
 from .adapters import base
 from .client import get_client
-from .types import Deployment, EvaluationJob, ModelVersion
+from .types import Dataset, Deployment, EvaluationJob, ModelVersion, PredictionJob, PromptVersion
 
 
 def log_metrics(metrics: dict[str, float], *, step: int | None = None) -> None:
@@ -69,6 +69,31 @@ def register_model(
         framework=framework,
         artifact_uri=artifact_uri,
         metadata=metadata or {},
+    )
+
+
+def predict(
+    *,
+    model: ModelVersion | str,
+    dataset: Dataset | str,
+    prompt: PromptVersion | str,
+    provider: str = "openai",
+    config: dict[str, Any] | None = None,
+) -> PredictionJob:
+    """Queue a prediction job: render ``prompt`` per dataset row and run inference.
+
+    ``model``/``dataset``/``prompt`` accept SDK objects, canonical ids, or ``name:version``
+    references. The default provider talks to any OpenAI-compatible backend (Ollama, MLX-LM,
+    llama.cpp, vLLM) at ``config["base_url"]`` (falling back to the server's configured
+    serving URL); ``config`` also carries generation parameters (``temperature``,
+    ``max_tokens``, ...) and ``batch_size`` — the number of concurrent in-flight requests.
+    """
+    return get_client().create_prediction(
+        model=model.id if isinstance(model, ModelVersion) else model,
+        dataset=dataset.id if isinstance(dataset, Dataset) else dataset,
+        prompt=prompt.id if isinstance(prompt, PromptVersion) else prompt,
+        provider=provider,
+        config=config,
     )
 
 

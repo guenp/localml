@@ -31,5 +31,9 @@ class EvaluationFailedError(LocalMLError):
     """Raised when an evaluation job ends in a ``failed`` state."""
 
 
+class PredictionFailedError(LocalMLError):
+    """Raised when a prediction job ends in a ``failed`` state or times out."""
+
+
 class DeploymentError(LocalMLError):
     """Raised when a deployment cannot be created or activated."""
