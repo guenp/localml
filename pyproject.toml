@@ -90,7 +90,8 @@ known-first-party = ["localml"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["RUF012"]
-"services/**" = ["B008"]
+"services/**" = ["B008"]        # FastAPI Depends()/Header() in defaults
+"src/localml/cli.py" = ["B008"]  # Typer Option() in defaults
 
 [tool.ty.environment]
 python-version = "3.11"
