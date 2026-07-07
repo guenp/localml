@@ -26,11 +26,20 @@ from .exceptions import (
     EvaluationFailedError,
     LocalMLError,
     ModelRegistrationError,
+    PredictionFailedError,
     ValidationError,
 )
-from .ops import deploy, evaluate, log_artifact, log_metrics, log_params, register_model
+from .ops import deploy, evaluate, log_artifact, log_metrics, log_params, predict, register_model
 from .run import start_run
-from .types import Dataset, Deployment, EvaluationJob, ModelVersion, PromptVersion, Run
+from .types import (
+    Dataset,
+    Deployment,
+    EvaluationJob,
+    ModelVersion,
+    PredictionJob,
+    PromptVersion,
+    Run,
+)
 
 __all__ = [
     "ArtifactUploadError",
@@ -44,6 +53,8 @@ __all__ = [
     "LocalMLError",
     "ModelRegistrationError",
     "ModelVersion",
+    "PredictionFailedError",
+    "PredictionJob",
     "PromptVersion",
     "Run",
     "ValidationError",
@@ -57,6 +68,7 @@ __all__ = [
     "log_metrics",
     "log_params",
     "mlx",
+    "predict",
     "prompts",
     "register_model",
     "start_run",

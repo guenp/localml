@@ -51,8 +51,25 @@ the declared variables (missing or extra → `ValidationError`).
 - `localml.prompts.render(name, version, **variables)` → `str`
 - `PromptVersion.render(**variables)` → `str` — renders server-side via the bound client.
 
+## Predictions
+
+Batch inference over a dataset, run on the background worker (decoupled from evaluation —
+outputs are stored as JSONL and scored separately).
+
+- `localml.predict(*, model, dataset, prompt, provider="openai", config=None)` →
+  `PredictionJob` — `model`/`dataset`/`prompt` accept SDK objects, ids, or `name:version`.
+  `provider` is `"openai"` (any OpenAI-compatible backend; `config["base_url"]` overrides the
+  server's serving URL) or `"echo"` (deterministic, for smoke tests). `config` also carries
+  generation parameters and `batch_size` (in-flight concurrency). Prompt variables are
+  validated against the dataset's columns at submission (`ValidationError`).
+
 ## Job & deployment handles
 
+- `PredictionJob.wait(*, timeout=600.0, poll_interval=1.0)` — raises `PredictionFailedError`
+  on failure or timeout.
+- `PredictionJob.results()` → `list[dict]` — per-example records: `example_id`, `input`,
+  `rendered_prompt`, `output`, `latency_ms`, token counts, `error`.
+- `PredictionJob.refresh()`
 - `EvaluationJob.wait(*, timeout=600.0, poll_interval=1.0)` — polls with exponential backoff;
   raises `EvaluationFailedError` on failure or timeout.
 - `EvaluationJob.refresh()`
@@ -61,4 +78,5 @@ the declared variables (missing or extra → `ValidationError`).
 ## Exceptions
 
 All derive from `localml.LocalMLError`: `AuthenticationError`, `ValidationError`,
-`ArtifactUploadError`, `ModelRegistrationError`, `EvaluationFailedError`, `DeploymentError`.
+`ArtifactUploadError`, `ModelRegistrationError`, `PredictionFailedError`,
+`EvaluationFailedError`, `DeploymentError`.

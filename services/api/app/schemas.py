@@ -88,6 +88,14 @@ class RenderPromptRequest(BaseModel):
     variables: dict[str, Any] = Field(default_factory=dict)
 
 
+class CreatePredictionRequest(BaseModel):
+    model: str  # model-version id or name:version
+    dataset: str  # dataset id or name:version
+    prompt: str  # prompt-version id or name:version
+    provider: str = "openai"
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
 class ResolveReferenceRequest(BaseModel):
     resource_type: str
     reference: str
@@ -132,6 +140,26 @@ class EvaluationJobResponse(BaseModel):
     report_uri: str | None = None
 
 
+class PredictionJobResponse(BaseModel):
+    id: str
+    model_version_id: str
+    dataset_id: str
+    prompt_version_id: str
+    status: str
+    provider: str
+    config: dict[str, Any] = Field(default_factory=dict)
+    completed_count: int = 0
+    total_count: int = 0
+    results_uri: str | None = None
+    summary: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class PredictionResultsResponse(BaseModel):
+    job_id: str
+    results: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class DeploymentResponse(BaseModel):
     id: str
     model_version_id: str
@@ -148,6 +176,7 @@ class DatasetResponse(BaseModel):
     artifact_uri: str
     row_count: int
     example_ids: list[str] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     upload_url: str | None = None
 

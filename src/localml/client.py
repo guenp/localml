@@ -23,7 +23,15 @@ from .exceptions import (
     ModelRegistrationError,
     ValidationError,
 )
-from .types import Dataset, Deployment, EvaluationJob, ModelVersion, PromptVersion, Run
+from .types import (
+    Dataset,
+    Deployment,
+    EvaluationJob,
+    ModelVersion,
+    PredictionJob,
+    PromptVersion,
+    Run,
+)
 
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
@@ -256,6 +264,54 @@ class Client:
             version=data["version"],
             template=data["template"],
             variables=data.get("variables", []),
+            _client=self,
+        )
+
+    # -- predictions ---------------------------------------------------------------
+
+    def create_prediction(
+        self,
+        *,
+        model: str,
+        dataset: str,
+        prompt: str,
+        provider: str = "openai",
+        config: dict[str, Any] | None = None,
+    ) -> PredictionJob:
+        data = self._request(
+            "POST",
+            "/predictions",
+            idempotent=True,
+            json={
+                "model": model,
+                "dataset": dataset,
+                "prompt": prompt,
+                "provider": provider,
+                "config": config or {},
+            },
+        )
+        return self._prediction_from(data)
+
+    def get_prediction(self, job_id: str) -> PredictionJob:
+        return self._prediction_from(self._request("GET", f"/predictions/{job_id}"))
+
+    def get_prediction_results(self, job_id: str) -> list[dict[str, Any]]:
+        data = self._request("GET", f"/predictions/{job_id}/results")
+        return data["results"]
+
+    def _prediction_from(self, data: dict[str, Any]) -> PredictionJob:
+        return PredictionJob(
+            id=data["id"],
+            model_version_id=data["model_version_id"],
+            dataset_id=data["dataset_id"],
+            prompt_version_id=data["prompt_version_id"],
+            status=data.get("status", "queued"),
+            provider=data.get("provider", "openai"),
+            completed_count=data.get("completed_count", 0),
+            total_count=data.get("total_count", 0),
+            results_uri=data.get("results_uri"),
+            summary=data.get("summary", {}),
+            error=data.get("error"),
             _client=self,
         )
 

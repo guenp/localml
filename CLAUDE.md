@@ -19,9 +19,12 @@ datasets, evaluation jobs, local serving) at single-workstation scale. Full spec
 - `services/api/app/` — control plane. `main.py` (app + lifespan), `db.py` (SQLAlchemy ORM =
   Postgres schema, source of truth), `session.py` (engine + `get_db`), `repositories.py`
   (idempotency, get-or-create, `name:version` resolution), `routers/`, `schemas.py` (Pydantic),
-  `lifecycle.py` (state machine), `auth.py`, `queue.py` (Redis), `integrations.py`
-  (MLflow/MinIO, all defensive), `config.py`, `alembic/`.
-- `services/worker/` — Redis-consuming evaluation worker (real metrics land in Phase 3).
+  `lifecycle.py` (state machine), `auth.py`, `queue.py` (Redis), `templating.py` (sandboxed
+  prompts), `inference.py` (providers), `prediction.py` (job loop), `worker.py` (queue
+  consumer), `integrations.py` (MLflow/MinIO, all defensive), `config.py`, `alembic/`.
+- The background worker runs from the **same image/codebase as the API**: Compose starts a
+  second `services/api` container with `command: python -m app.worker`. There is no separate
+  worker package.
 - `scripts/seed.py` / `scripts/reset.py`, `tests/`, `docs/`.
 
 ## Architecture notes
@@ -38,6 +41,8 @@ datasets, evaluation jobs, local serving) at single-workstation scale. Full spec
   Same key + same body → original response; same key + different body → 409.
 - **Optional services degrade gracefully.** MLflow, MinIO (boto3), and Redis all no-op when
   unavailable so the core flow works standalone and in tests. Don't make them hard deps.
+  Prediction jobs normally run on the worker via Redis; without Redis they run on an
+  in-process background thread (`app.prediction.schedule_inline`) — never inline in a request.
 - **`name:version`** (e.g. `assistant:v1`) resolves server-side to canonical ids for models and
   datasets (`POST /resolve`, and inline in create paths).
 - **Serving = OpenAI-compatible proxy** (Ollama / MLX-LM / llama.cpp / vLLM), not a bespoke

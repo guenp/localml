@@ -9,9 +9,9 @@ storage, evaluation jobs, and local model serving.
 
 > Status: **under active development.** The control plane (Phase 1 — durable Postgres-backed
 > metadata, lifecycle, idempotency, dataset registry), the Python SDK (Phase 2 — real HTTPX
-> client, run tracking, artifact checksums, framework-adapter packaging), and the prompt
-> registry (Phase 3 M1) are implemented and tested. Prediction/evaluation jobs and the local
-> serving proxy are next. See
+> client, run tracking, artifact checksums, framework-adapter packaging), the prompt registry
+> (Phase 3 M1), and worker-run prediction jobs (Phase 3 M2) are implemented and tested.
+> Evaluation jobs over stored predictions and the local serving proxy are next. See
 > [`ROADMAP.md`](./ROADMAP.md) for status and [`docs/design.md`](./docs/design.md) for the full
 > software design document.
 
@@ -28,11 +28,10 @@ localml/
 │   ├── config.py         # env → ~/.localml/config.toml → defaults
 │   ├── exceptions.py     # typed SDK errors
 │   ├── run.py            # run context manager
-│   ├── types.py          # Run / ModelVersion / EvaluationJob / Deployment
+│   ├── types.py          # Run / ModelVersion / PredictionJob / EvaluationJob / Deployment
 │   └── cli.py            # Typer CLI
 ├── services/
-│   ├── api/              # FastAPI control plane
-│   ├── worker/           # Redis-backed evaluation worker
+│   ├── api/              # FastAPI control plane (+ the worker: `python -m app.worker`)
 │   └── mlflow/           # MLflow tracking + registry image
 ├── docs/                 # Zensical documentation site and design document
 ├── docker-compose.yml    # Local stack: api, worker, postgres, redis, minio, mlflow, serving
@@ -120,6 +119,9 @@ localml runs get <run_id>
 localml models get <name>
 localml prompts register <name> --template "..."   # or --file prompt.txt
 localml prompts render <name> <version> --var key=value
+localml predictions run <model:v> <dataset:v> <prompt:v> --config '{"batch_size": 4}'
+localml predictions status <job_id>
+localml predictions results <job_id>
 ```
 
 ## Prompt registry
@@ -128,10 +130,10 @@ Prompts change more often than models, so they are versioned like one: an experi
 described by **model version + dataset version + prompt version** (e.g. `assistant:v3` +
 `eval-set:v1` + `qa:v2`), which is what makes eval results reproducible and comparable.
 Templates are plain `str.format` strings; the server extracts the `{placeholders}` at
-registration and stores them as the version's `variables`, so a prediction job (Phase 3 M2)
-can check that a dataset provides every variable *before* running inference. In the upcoming
-prediction loop, the worker renders the template against each dataset row and sends the result
-to the model — register two prompt versions, predict with both, and compare to pick the winner.
+registration and stores them as the version's `variables`, so a prediction job can check that
+a dataset provides every variable *before* running inference. In the prediction loop, the
+worker renders the template against each dataset row and sends the result to the model —
+register two prompt versions, predict with both, and compare to pick the winner.
 
 ```python
 import localml as ml
@@ -155,6 +157,32 @@ Positional fields and attribute/index access (`{obj.attr}`, `{rows[0]}`) are rej
 registration, so rendering untrusted dataset rows can never traverse into object internals.
 Like models and datasets, prompts resolve by `name:version` (`qa:v2`) everywhere references
 are accepted.
+
+## Prediction jobs
+
+Batch inference is a background job, decoupled from evaluation: outputs are stored once as a
+JSONL artifact and scored separately (Phase 3 M3), so evals can re-run without re-inferring.
+A job resolves a **model + dataset + prompt** triple, renders the prompt per dataset row, and
+sends it to an inference provider — by default any **OpenAI-compatible** backend (Ollama,
+MLX-LM, llama.cpp, vLLM) at `config["base_url"]`:
+
+```python
+job = ml.predict(
+    model="assistant:v1",
+    dataset="eval-set:v1",
+    prompt="qa:v2",
+    config={"batch_size": 4, "temperature": 0.2},  # batch_size = in-flight concurrency
+)
+job.wait()
+for r in job.results():
+    print(r["example_id"], r["output"], r["latency_ms"], r["error"])
+```
+
+Prompt variables are pre-flighted against the dataset's columns at submission (a typo'd
+column fails fast with a 422), progress is checkpointed per batch so a re-run skips finished
+examples, and a failing example emits a result row with `error` set instead of failing the
+job. Jobs run on the Redis-backed worker; without Redis (e.g. the standalone SQLite setup)
+they run on a background thread in the API process, so the flow works everywhere.
 
 ## Development
 

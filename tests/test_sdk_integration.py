@@ -81,6 +81,57 @@ def test_prompt_register_render_and_get(sdk):
     assert ml.prompts.render("qa", "v2", question="q", context="c") == "Q: q\nContext: c\nA:"
 
 
+def test_predict_end_to_end(sdk, tmp_path):
+    """Full Phase 3 M2 loop: register the triple, predict with the echo provider, read results.
+
+    No Redis in tests, so the job runs on the API's inline background thread — the same
+    degradation path the standalone (no-Docker) flow uses.
+    """
+    import json
+
+    rows = [{"question": "a", "expected": "a"}, {"question": "b", "expected": "b"}]
+    dataset_file = tmp_path / "eval.jsonl"
+    dataset_file.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+    dataset = ml.datasets.register(
+        project="local", name="pred-eval", artifact_uri=str(dataset_file), rows=rows
+    )
+    prompt = ml.prompts.register(name="pred-qa", template="Q: {question}\nA:")
+    version = ml.register_model("pred-m", artifact_uri="file:///tmp/m", framework="mlx")
+
+    job = ml.predict(
+        model=version, dataset=dataset, prompt=prompt, provider="echo", config={"batch_size": 2}
+    )
+    assert job.status == "queued"
+    job.wait(timeout=30)
+
+    assert job.status == "completed"
+    assert (job.completed_count, job.total_count) == (2, 2)
+    assert job.summary["succeeded"] == 2
+
+    results = job.results()
+    assert len(results) == 2
+    first = next(r for r in results if r["input"]["question"] == "a")
+    assert first["rendered_prompt"] == first["output"] == "Q: a\nA:"
+    assert first["error"] is None
+
+
+def test_predict_rejects_prompt_needing_missing_column(sdk, tmp_path):
+    from localml.exceptions import ValidationError
+
+    dataset = ml.datasets.register(
+        project="local",
+        name="pred-narrow",
+        artifact_uri=str(tmp_path / "narrow.jsonl"),
+        rows=[{"question": "a"}],
+    )
+    prompt = ml.prompts.register(name="pred-ctx", template="Q: {question}\nContext: {context}")
+    version = ml.register_model("pred-m2", artifact_uri="file:///tmp/m", framework="mlx")
+
+    with pytest.raises(ValidationError, match="context"):
+        ml.predict(model=version, dataset=dataset, prompt=prompt, provider="echo")
+
+
 def test_evaluate_queues_job(sdk):
     version = ml.register_model("m", artifact_uri="file:///tmp/m", framework="mlx")
     job = ml.evaluate(model=version, dataset="evalset:v1", metrics=["accuracy"])

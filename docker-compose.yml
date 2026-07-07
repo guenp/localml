@@ -11,9 +11,12 @@ services:
       - mlflow
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+  # Same image/codebase as the API — only the entrypoint differs, so the worker shares the
+  # ORM, prompt templating, and inference providers.
   worker:
-    build: ./services/worker
+    build: ./services/api
     env_file: .env
+    command: python -m app.worker
     depends_on:
       - redis
       - postgres

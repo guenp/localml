@@ -312,9 +312,9 @@ erDiagram
 ```
 
 Tables: `users`, `projects`, `runs`, `metrics`, `params`, `artifacts`, `models`,
-`model_versions`, `datasets`, `evaluation_jobs`, `evaluation_metrics`, `deployments`,
-`audit_events`. Full column definitions live in the ORM models at
-`services/api/app/db.py`.
+`model_versions`, `datasets`, `prompt_versions`, `prediction_jobs`, `evaluation_jobs`,
+`evaluation_metrics`, `deployments`, `audit_events`. Full column definitions live in the ORM
+models at `services/api/app/db.py`.
 
 Migrations: Alembic; additive where possible; avoid destructive changes in MVP; seed a
 default local user and project; provide a reset script.

@@ -8,6 +8,18 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- **Phase 3 M2 — Prediction jobs.** Batch inference decoupled from evaluation: `POST
+  /predictions` resolves a model + dataset + prompt triple (ids or `name:version`),
+  pre-flights the prompt's variables against the dataset's registered columns, and runs on
+  the background worker via Redis (falling back to an in-process background thread when
+  Redis is unavailable). The `InferenceProvider` interface ships an OpenAI-compatible
+  default (httpx against any local backend's `/v1/chat/completions`) plus a deterministic
+  `echo` provider; `batch_size` bounds in-flight concurrency. Results append to a JSONL
+  file (input, rendered prompt, output, latency, token counts, per-example error) uploaded
+  to MinIO when available, with per-batch `completed_examples` checkpoints so re-runs skip
+  finished examples. SDK `ml.predict(...)` → `PredictionJob.wait()/.results()`; CLI
+  `localml predictions run/status/results`; datasets now record their common `columns`.
+  Alembic migration `0003_prediction_jobs`.
 - **Phase 3 M1 — Prompt registry.** Versioned `str.format` prompt templates with a sandboxed
   field grammar (bare identifiers only; attribute/index access rejected at registration) and
   server-side variable extraction. `POST /prompts` (idempotent, auto-versioned) /
@@ -48,6 +60,8 @@ _Phase 1 (control plane core):_
 
 ### Changed
 
+- The background worker now runs from the API image (`python -m app.worker`, consuming both
+  the prediction and evaluation queues); the separate `services/worker/` scaffold is removed.
 - Local serving is now specified as an **OpenAI-compatible proxy** (Ollama / MLX-LM /
   llama.cpp / vLLM) rather than a bespoke inference service — see design §4.5 and roadmap
   Phases 3–4.

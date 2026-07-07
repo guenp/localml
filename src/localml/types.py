@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from ._polling import wait_for_terminal
-from .exceptions import EvaluationFailedError
+from .exceptions import EvaluationFailedError, PredictionFailedError
 
 if TYPE_CHECKING:
     from .client import Client
@@ -68,6 +68,70 @@ class PromptVersion:
         if self._client is None:
             raise RuntimeError("prompt version is not bound to a client")
         return self._client.render_prompt(self.name, self.version, variables)
+
+
+@dataclass
+class PredictionJob:
+    """Background job that runs a prompt over a dataset through an inference provider."""
+
+    id: str
+    model_version_id: str
+    dataset_id: str
+    prompt_version_id: str
+    status: str = "queued"
+    provider: str = "openai"
+    completed_count: int = 0
+    total_count: int = 0
+    results_uri: str | None = None
+    summary: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    _client: Client | None = field(default=None, repr=False, compare=False)
+
+    _TERMINAL = frozenset({"completed", "failed"})
+
+    def refresh(self) -> PredictionJob:
+        """Fetch the latest job state from the control plane."""
+        if self._client is None:
+            return self
+        latest = self._client.get_prediction(self.id)
+        for name in (
+            "status",
+            "completed_count",
+            "total_count",
+            "results_uri",
+            "summary",
+            "error",
+        ):
+            setattr(self, name, getattr(latest, name))
+        return self
+
+    def wait(self, *, timeout: float = 600.0, poll_interval: float = 1.0) -> PredictionJob:
+        """Poll until the job reaches a terminal state.
+
+        Raises :class:`PredictionFailedError` if the job ends in ``failed`` or the timeout
+        elapses.
+        """
+        try:
+            status = wait_for_terminal(
+                self.refresh,
+                lambda: self.status,
+                self._TERMINAL,
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+        except TimeoutError as exc:
+            raise PredictionFailedError(
+                f"prediction {self.id} timed out (status={self.status})"
+            ) from exc
+        if status == "failed":
+            raise PredictionFailedError(f"prediction {self.id} failed: {self.error}")
+        return self
+
+    def results(self) -> list[dict[str, Any]]:
+        """Fetch the per-example result records (input, rendered prompt, output, error)."""
+        if self._client is None:
+            raise RuntimeError("prediction job is not bound to a client")
+        return self._client.get_prediction_results(self.id)
 
 
 @dataclass
