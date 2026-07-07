@@ -27,6 +27,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dashboard = [
+    "streamlit>=1.30",
+]
 api = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
