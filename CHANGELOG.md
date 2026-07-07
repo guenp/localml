@@ -8,6 +8,35 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- **Phase 4 — Local serving proxy.** Serving is an OpenAI-compatible proxy, not a bespoke
+  inference server. A backend registry maps a deployment target to a `{base_url, model,
+  api_key}`, resolved at request time (deployment `config` → registered backend → the global
+  serving URL, model id defaulting to the deployed model's registry name). Creating a
+  deployment validates lifecycle state, health-checks the backend (`GET /v1/models`), and
+  records `active`/`degraded`. `POST /deployments/{id}/v1/chat/completions` and
+  `/v1/completions` forward to the backend and return its reply; `/predict` is prompt→messages
+  sugar. `PATCH /deployments/{id}` hot-swaps the model version, target, or backend config with
+  no restart. SDK: `Deployment.chat()/.predict()/.swap()`, `ml.deploy(..., provider=, config=)`,
+  the `ml.providers` registry (`register`/`get`/`config_for`); CLI `localml deployments
+  create/swap/predict`. Additive Alembic migration `0005_deployment_serving`.
+- **Phase 3 M4 — Comparison reports.** `GET /compare?a=&b=` compares two prediction- or
+  evaluation-job references across aligned `example_id`s: what varied between the variants
+  (model / prompt / dataset / provider / config), row alignment (aligned/only-in counts,
+  output agreement, error counts, mean-latency delta), per-metric a/b/delta values when both
+  are evaluations, and capped changed-example samples. SDK `ml.compare(a, b)` → `Comparison`;
+  CLI `localml compare`.
+- **Phase 3 M3 — Evaluation jobs.** Evaluations are keyed on a completed prediction job and
+  score its stored JSONL results (re-runnable without re-inferring). A pluggable metric
+  registry ships `exact_match`, `contains_expected`, `regex_match`, `format_validity`,
+  `json_validity`, `latency_p50/p95/p99`, `error_rate`, and `avg_input/output_tokens`; unknown
+  metrics or a missing `regex_match` pattern are rejected (422) at create. The worker scores on
+  a background thread (or Redis), captures tracebacks with bounded retries for transient
+  failures, writes a JSON report (uploaded to MinIO when available), persists metric rows, and
+  logs to MLflow defensively. SDK `ml.evals.run(...)` + `ml.evals.register_metric` (custom
+  metrics computed client-side), `ml.evaluate(..., prompt=...)` as predict-then-eval sugar;
+  CLI `localml evals run/status`. Additive Alembic migration `0004_evaluation_prediction_link`
+  (evaluations gain a nullable `prediction_job_id`; the legacy `model_version_id` +
+  `dataset_uri` record-only shape still works).
 - **Phase 3 M2 — Prediction jobs.** Batch inference decoupled from evaluation: `POST
   /predictions` resolves a model + dataset + prompt triple (ids or `name:version`),
   pre-flights the prompt's variables against the dataset's registered columns, and runs on
@@ -62,9 +91,10 @@ _Phase 1 (control plane core):_
 
 - The background worker now runs from the API image (`python -m app.worker`, consuming both
   the prediction and evaluation queues); the separate `services/worker/` scaffold is removed.
-- Local serving is now specified as an **OpenAI-compatible proxy** (Ollama / MLX-LM /
-  llama.cpp / vLLM) rather than a bespoke inference service — see design §4.5 and roadmap
-  Phases 3–4.
+- Local serving is now an **OpenAI-compatible proxy** (Ollama / MLX-LM / llama.cpp / vLLM)
+  rather than a bespoke inference service — implemented in Phase 4 (see design §4.5).
+- The in-process no-Redis job fallback is shared by prediction and evaluation jobs
+  (`app.background.schedule_inline`).
 
 ### Fixed
 
