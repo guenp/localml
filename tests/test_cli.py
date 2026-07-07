@@ -171,6 +171,14 @@ def test_evals_status(stub):
     assert stub.requests[0][:2] == ("GET", "/evaluations/e1")
 
 
+def test_compare_command(stub):
+    result = runner.invoke(cli.app, ["compare", "a1", "b1", "--max-examples", "5"])
+    assert result.exit_code == 0
+    method, path, kwargs = stub.requests[0]
+    assert (method, path) == ("GET", "/compare")
+    assert kwargs["params"] == {"a": "a1", "b": "b1", "max_examples": 5}
+
+
 def test_runs_and_models_get(stub):
     assert runner.invoke(cli.app, ["runs", "get", "r1"]).exit_code == 0
     assert runner.invoke(cli.app, ["models", "get", "m"]).exit_code == 0

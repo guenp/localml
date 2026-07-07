@@ -29,9 +29,19 @@ from .exceptions import (
     PredictionFailedError,
     ValidationError,
 )
-from .ops import deploy, evaluate, log_artifact, log_metrics, log_params, predict, register_model
+from .ops import (
+    compare,
+    deploy,
+    evaluate,
+    log_artifact,
+    log_metrics,
+    log_params,
+    predict,
+    register_model,
+)
 from .run import start_run
 from .types import (
+    Comparison,
     Dataset,
     Deployment,
     EvaluationJob,
@@ -44,6 +54,7 @@ from .types import (
 __all__ = [
     "ArtifactUploadError",
     "AuthenticationError",
+    "Comparison",
     "Config",
     "Dataset",
     "Deployment",
@@ -58,6 +69,7 @@ __all__ = [
     "PromptVersion",
     "Run",
     "ValidationError",
+    "compare",
     "configure",
     "datasets",
     "deploy",

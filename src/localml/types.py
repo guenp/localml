@@ -182,6 +182,24 @@ class EvaluationJob:
 
 
 @dataclass
+class Comparison:
+    """Report comparing two prediction/evaluation jobs across aligned example ids.
+
+    ``kind`` is ``"evaluation"`` when both references were evaluation jobs (then ``metrics``
+    holds per-metric a/b/delta values), else ``"prediction"``. ``differs`` names what varied
+    between the variants (model_version, prompt_version, dataset, provider, config).
+    """
+
+    kind: str
+    a: dict[str, Any]
+    b: dict[str, Any]
+    differs: list[str] = field(default_factory=list)
+    metrics: dict[str, dict[str, float | None]] = field(default_factory=dict)
+    rows: dict[str, Any] = field(default_factory=dict)
+    changed_examples: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
 class Deployment:
     """Active or historical serving configuration for a model version."""
 

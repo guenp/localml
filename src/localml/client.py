@@ -24,6 +24,7 @@ from .exceptions import (
     ValidationError,
 )
 from .types import (
+    Comparison,
     Dataset,
     Deployment,
     EvaluationJob,
@@ -356,6 +357,22 @@ class Client:
             report_uri=data.get("report_uri"),
             error=data.get("error"),
             _client=self,
+        )
+
+    # -- comparisons -------------------------------------------------------------
+
+    def compare(self, a: str, b: str, *, max_examples: int = 20) -> Comparison:
+        data = self._request(
+            "GET", "/compare", params={"a": a, "b": b, "max_examples": max_examples}
+        )
+        return Comparison(
+            kind=data["kind"],
+            a=data["a"],
+            b=data["b"],
+            differs=data.get("differs", []),
+            metrics=data.get("metrics", {}),
+            rows=data.get("rows", {}),
+            changed_examples=data.get("changed_examples", []),
         )
 
     # -- deployments -------------------------------------------------------------

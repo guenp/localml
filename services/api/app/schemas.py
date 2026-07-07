@@ -205,6 +205,49 @@ class RenderPromptResponse(BaseModel):
     rendered: str
 
 
+class ComparisonSide(BaseModel):
+    job_id: str  # the referenced job (evaluation id when the reference was an evaluation)
+    prediction_job_id: str
+    model_version_id: str
+    prompt_version_id: str
+    dataset_id: str
+    provider: str
+    metrics: dict[str, float] | None = None  # present when the side is an evaluation
+
+
+class ValueDelta(BaseModel):
+    a: float | None = None
+    b: float | None = None
+    delta: float | None = None  # b - a when both sides have a value
+
+
+class ComparisonRows(BaseModel):
+    aligned: int
+    only_in_a: int
+    only_in_b: int
+    both_succeeded: int
+    agreements: int  # aligned rows where both succeeded with identical outputs
+    a_errored: int
+    b_errored: int
+    mean_latency_ms: ValueDelta
+
+
+class ChangedExample(BaseModel):
+    example_id: str
+    output_a: str | None = None
+    output_b: str | None = None
+
+
+class ComparisonResponse(BaseModel):
+    kind: str  # "evaluation" when both references are evaluation jobs, else "prediction"
+    a: ComparisonSide
+    b: ComparisonSide
+    differs: list[str] = Field(default_factory=list)
+    metrics: dict[str, ValueDelta] = Field(default_factory=dict)
+    rows: ComparisonRows
+    changed_examples: list[ChangedExample] = Field(default_factory=list)
+
+
 class ResolveReferenceResponse(BaseModel):
     resource_type: str
     reference: str

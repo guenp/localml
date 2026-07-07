@@ -14,7 +14,15 @@ from ._hashing import sha256_file
 from ._state import get_current_run
 from .adapters import base
 from .client import get_client
-from .types import Dataset, Deployment, EvaluationJob, ModelVersion, PredictionJob, PromptVersion
+from .types import (
+    Comparison,
+    Dataset,
+    Deployment,
+    EvaluationJob,
+    ModelVersion,
+    PredictionJob,
+    PromptVersion,
+)
 
 
 def log_metrics(metrics: dict[str, float], *, step: int | None = None) -> None:
@@ -130,6 +138,23 @@ def evaluate(
         dataset_uri=dataset_uri,
         metrics=metrics,
     )
+
+
+def compare(
+    a: PredictionJob | EvaluationJob | str,
+    b: PredictionJob | EvaluationJob | str,
+    *,
+    max_examples: int = 20,
+) -> Comparison:
+    """Compare two prediction/evaluation jobs across aligned ``example_id``s.
+
+    Pass job handles or ids. When both are evaluation jobs the report includes per-metric
+    a/b/delta values; row alignment always comes from the underlying predictions' stored
+    results. ``max_examples`` caps the changed-example samples returned.
+    """
+    ref_a = a if isinstance(a, str) else a.id
+    ref_b = b if isinstance(b, str) else b.id
+    return get_client().compare(ref_a, ref_b, max_examples=max_examples)
 
 
 def deploy(model: ModelVersion | str, target: str = "local") -> Deployment:

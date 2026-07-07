@@ -196,6 +196,31 @@ def test_evaluate_predict_then_eval_sugar(sdk, tmp_path):
     assert job.metrics == {"exact_match": 1.0}
 
 
+def test_compare_end_to_end(sdk, tmp_path):
+    """Two prompt variants over the same dataset, compared across aligned example ids."""
+    import json
+
+    rows = [{"question": "a"}, {"question": "b"}]
+    dataset_file = tmp_path / "cmp.jsonl"
+    dataset_file.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    dataset = ml.datasets.register(
+        project="local", name="cmp-ds", artifact_uri=str(dataset_file), rows=rows
+    )
+    p1 = ml.prompts.register(name="cmp-qa", template="Q: {question}\nA:")
+    p2 = ml.prompts.register(name="cmp-qa", template="Question: {question}\nAnswer:")
+    version = ml.register_model("cmp-m", artifact_uri="file:///tmp/m", framework="mlx")
+
+    job_a = ml.predict(model=version, dataset=dataset, prompt=p1, provider="echo").wait(timeout=30)
+    job_b = ml.predict(model=version, dataset=dataset, prompt=p2, provider="echo").wait(timeout=30)
+
+    report = ml.compare(job_a, job_b, max_examples=1)
+    assert report.kind == "prediction"
+    assert report.differs == ["prompt_version"]
+    assert report.rows["aligned"] == 2
+    assert report.rows["agreements"] == 0  # every rendered prompt (echo output) changed
+    assert len(report.changed_examples) == 1  # capped
+
+
 def test_evaluate_queues_job(sdk):
     version = ml.register_model("m", artifact_uri="file:///tmp/m", framework="mlx")
     job = ml.evaluate(model=version, dataset="evalset:v1", metrics=["accuracy"])

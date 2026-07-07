@@ -14,6 +14,7 @@ from fastapi import Depends, FastAPI
 from .auth import require_auth
 from .config import settings
 from .routers import (
+    compare,
     datasets,
     deployments,
     evaluations,
@@ -59,5 +60,6 @@ app.include_router(datasets.router, dependencies=_protected)
 app.include_router(prompts.router, dependencies=_protected)
 app.include_router(predictions.router, dependencies=_protected)
 app.include_router(evaluations.router, dependencies=_protected)
+app.include_router(compare.router, dependencies=_protected)
 app.include_router(deployments.router, dependencies=_protected)
 app.include_router(resolve.router, dependencies=_protected)

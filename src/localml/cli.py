@@ -184,5 +184,19 @@ def evals_status(job_id: str) -> None:
     _echo(get_client()._request("GET", f"/evaluations/{job_id}"))
 
 
+@app.command()
+def compare(
+    a: str = typer.Argument(help="Prediction- or evaluation-job id (variant A)"),
+    b: str = typer.Argument(help="Prediction- or evaluation-job id (variant B)"),
+    max_examples: int = typer.Option(20, help="Cap on changed examples returned"),
+) -> None:
+    """Compare two prediction/evaluation jobs across aligned example ids."""
+    _echo(
+        get_client()._request(
+            "GET", "/compare", params={"a": a, "b": b, "max_examples": max_examples}
+        )
+    )
+
+
 if __name__ == "__main__":
     app()
