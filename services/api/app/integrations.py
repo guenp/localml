@@ -64,6 +64,27 @@ def register_mlflow_model(name: str) -> str | None:
         return None
 
 
+def log_mlflow_metrics(run_name: str, metrics: dict[str, float]) -> str | None:
+    """Log evaluation metrics to a fresh MLflow run; returns its id, or ``None`` if degraded."""
+    if not metrics:
+        return None
+    try:
+        import mlflow
+    except Exception as exc:  # pragma: no cover - optional dependency
+        log.warning("MLflow import failed: %s", exc)
+        return None
+
+    try:
+        mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+        mlflow.set_experiment("localml-evaluations")
+        with mlflow.start_run(run_name=run_name) as active:
+            mlflow.log_metrics(metrics)
+        return active.info.run_id
+    except Exception as exc:  # pragma: no cover - depends on external service
+        log.warning("MLflow metric logging failed: %s", exc)
+        return None
+
+
 def upload_object(path: str, object_key: str) -> str | None:
     """Upload a local file to MinIO and return its ``s3://`` URI, or ``None`` if unavailable."""
     try:

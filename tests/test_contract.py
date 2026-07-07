@@ -26,8 +26,11 @@ SDK_ENDPOINTS = [
     ("get", "/predictions/{job_id}/results"),
     ("post", "/evaluations"),
     ("get", "/evaluations/{job_id}"),
+    ("get", "/compare"),
     ("post", "/deployments"),
+    ("patch", "/deployments/{deployment_id}"),
     ("post", "/deployments/{deployment_id}/predict"),
+    ("post", "/deployments/{deployment_id}/v1/chat/completions"),
 ]
 
 

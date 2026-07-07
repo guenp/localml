@@ -22,8 +22,10 @@ internal transport configured via `ml.configure`.
 ## Models
 
 - `localml.register_model(name, artifact_uri, *, framework="generic", metadata=None)`
-- `localml.evaluate(model, dataset, metrics)` → `EvaluationJob`
-- `localml.deploy(model, target="local")` → `Deployment`
+- `localml.evaluate(model, dataset, metrics, *, prompt=None, provider="openai", config=None,
+  predict_timeout=600.0)` → `EvaluationJob` — with `prompt`, predict-then-eval sugar (runs a
+  prediction, waits, then scores it); without it, the legacy record-only shape.
+- `localml.deploy(model, target="local", *, provider=None, config=None)` → `Deployment`
 
 Framework adapters serialize + package a model and register it as a version:
 
@@ -63,6 +65,32 @@ outputs are stored as JSONL and scored separately).
   generation parameters and `batch_size` (in-flight concurrency). Prompt variables are
   validated against the dataset's columns at submission (`ValidationError`).
 
+## Evaluations
+
+Score a **completed** prediction job's stored results with registered metrics (re-runnable
+without re-inferring). Built-ins: `exact_match`, `contains_expected`, `regex_match`,
+`format_validity`, `json_validity`, `latency_p50/p95/p99`, `error_rate`,
+`avg_input/output_tokens`. Metric parameters go in `config` (`expected_field`, `pattern`,
+`format`).
+
+- `localml.evals.run(prediction, metrics, *, config=None)` → `EvaluationJob` — `prediction` is
+  a `PredictionJob` or its id.
+- `localml.evals.register_metric(name, fn)` — `fn(records, config) -> float | None` (`None` =
+  nothing scorable). Custom metrics run **client-side** over the stored results and are
+  persisted with the job.
+
+## Comparisons
+
+- `localml.compare(a, b, *, max_examples=20)` → `Comparison` — `a`/`b` are prediction- or
+  evaluation-job handles or ids. `Comparison` carries `kind`, `differs` (what varied), `rows`
+  (alignment/agreement/error/latency stats), `metrics` (per-metric a/b/delta when both are
+  evaluations), and `changed_examples`.
+
+## Serving
+
+- `localml.providers.register(name, *, base_url, model=None, api_key=None)` — name an
+  OpenAI-compatible serving backend for `ml.deploy(..., provider=name)`.
+
 ## Job & deployment handles
 
 - `PredictionJob.wait(*, timeout=600.0, poll_interval=1.0)` — raises `PredictionFailedError`
@@ -73,7 +101,12 @@ outputs are stored as JSONL and scored separately).
 - `EvaluationJob.wait(*, timeout=600.0, poll_interval=1.0)` — polls with exponential backoff;
   raises `EvaluationFailedError` on failure or timeout.
 - `EvaluationJob.refresh()`
-- `Deployment.predict(payload)`
+- `Deployment.chat(messages, **params)` → `dict` — round-trips an OpenAI chat request through
+  the proxy.
+- `Deployment.predict(payload)` — non-streaming sugar; accepts `{"prompt": ...}` or
+  `{"messages": [...]}`.
+- `Deployment.swap(*, model=None, target=None, config=None)` → `Deployment` — hot-repoints the
+  deployment and refreshes the handle in place.
 
 ## Exceptions
 

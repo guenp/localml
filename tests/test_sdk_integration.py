@@ -132,6 +132,95 @@ def test_predict_rejects_prompt_needing_missing_column(sdk, tmp_path):
         ml.predict(model=version, dataset=dataset, prompt=prompt, provider="echo")
 
 
+def _predicted_triple(tmp_path, *, name: str):
+    """Register a model/dataset/prompt triple and run an echo prediction to completion."""
+    import json
+
+    # The echo provider returns the rendered prompt, so the first row's expected matches.
+    rows = [{"question": "a", "expected": "Q: a\nA:"}, {"question": "b", "expected": "nope"}]
+    dataset_file = tmp_path / f"{name}.jsonl"
+    dataset_file.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    dataset = ml.datasets.register(
+        project="local", name=f"{name}-ds", artifact_uri=str(dataset_file), rows=rows
+    )
+    prompt = ml.prompts.register(name=f"{name}-qa", template="Q: {question}\nA:")
+    version = ml.register_model(f"{name}-m", artifact_uri="file:///tmp/m", framework="mlx")
+    job = ml.predict(model=version, dataset=dataset, prompt=prompt, provider="echo")
+    job.wait(timeout=30)
+    return version, dataset, prompt, job
+
+
+def test_evals_end_to_end(sdk, tmp_path, monkeypatch):
+    """Full Phase 3 M3 loop: score a completed prediction, mixing built-in + custom metrics."""
+    _, _, _, prediction = _predicted_triple(tmp_path, name="evals-e2e")
+
+    # Custom metrics run client-side over the stored results and persist with the job.
+    monkeypatch.setitem(
+        ml.evals._LOCAL_METRICS,
+        "half_of_total",
+        lambda records, config: len(records) / 2,
+    )
+    job = ml.evals.run(prediction, ["exact_match", "error_rate", "half_of_total"])
+    job.wait(timeout=30)
+
+    assert job.status == "completed"
+    assert job.prediction_job_id == prediction.id
+    assert job.metrics == {"exact_match": 0.5, "error_rate": 0.0, "half_of_total": 1.0}
+    assert job.report_uri
+    assert job.error is None
+
+
+def test_evals_run_rejects_unknown_prediction(sdk):
+    with pytest.raises(LocalMLError, match="not found"):
+        ml.evals.run("ghost-prediction", ["error_rate"])
+
+
+def test_evaluate_predict_then_eval_sugar(sdk, tmp_path):
+    """`ml.evaluate(..., prompt=...)` is predict-then-eval sugar over stored results."""
+    import json
+
+    rows = [{"question": "a", "expected": "Q: a\nA:"}]
+    dataset_file = tmp_path / "sugar.jsonl"
+    dataset_file.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    dataset = ml.datasets.register(
+        project="local", name="sugar-ds", artifact_uri=str(dataset_file), rows=rows
+    )
+    prompt = ml.prompts.register(name="sugar-qa", template="Q: {question}\nA:")
+    version = ml.register_model("sugar-m", artifact_uri="file:///tmp/m", framework="mlx")
+
+    job = ml.evaluate(
+        version, dataset, ["exact_match"], prompt=prompt, provider="echo", predict_timeout=30
+    )
+    assert job.prediction_job_id is not None
+    job.wait(timeout=30)
+    assert job.metrics == {"exact_match": 1.0}
+
+
+def test_compare_end_to_end(sdk, tmp_path):
+    """Two prompt variants over the same dataset, compared across aligned example ids."""
+    import json
+
+    rows = [{"question": "a"}, {"question": "b"}]
+    dataset_file = tmp_path / "cmp.jsonl"
+    dataset_file.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    dataset = ml.datasets.register(
+        project="local", name="cmp-ds", artifact_uri=str(dataset_file), rows=rows
+    )
+    p1 = ml.prompts.register(name="cmp-qa", template="Q: {question}\nA:")
+    p2 = ml.prompts.register(name="cmp-qa", template="Question: {question}\nAnswer:")
+    version = ml.register_model("cmp-m", artifact_uri="file:///tmp/m", framework="mlx")
+
+    job_a = ml.predict(model=version, dataset=dataset, prompt=p1, provider="echo").wait(timeout=30)
+    job_b = ml.predict(model=version, dataset=dataset, prompt=p2, provider="echo").wait(timeout=30)
+
+    report = ml.compare(job_a, job_b, max_examples=1)
+    assert report.kind == "prediction"
+    assert report.differs == ["prompt_version"]
+    assert report.rows["aligned"] == 2
+    assert report.rows["agreements"] == 0  # every rendered prompt (echo output) changed
+    assert len(report.changed_examples) == 1  # capped
+
+
 def test_evaluate_queues_job(sdk):
     version = ml.register_model("m", artifact_uri="file:///tmp/m", framework="mlx")
     job = ml.evaluate(model=version, dataset="evalset:v1", metrics=["accuracy"])
@@ -145,6 +234,63 @@ def test_deploy_rejects_non_deployable_model(sdk):
     # A freshly-created version is not deployable -> API 409 -> SDK error.
     with pytest.raises(LocalMLError):
         ml.deploy(model=version, target="local")
+
+
+def _deployable_version(sdk, name: str):
+    version = ml.register_model(name, artifact_uri="file:///tmp/m", framework="mlx")
+    for target in ("candidate", "staging"):
+        sdk._request("POST", f"/models/{name}/versions/1/promote", json={"target_status": target})
+    return version
+
+
+def test_deploy_and_chat_round_trip(sdk, monkeypatch):
+    """Deploy through the proxy, register a custom provider, and round-trip a chat request."""
+    import json as _json
+
+    import httpx
+    from app import serving
+
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = _json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "pong"}}]})
+
+    # The live server runs in-process, so patching the module object is visible to it.
+    monkeypatch.setattr(serving, "_transport", httpx.MockTransport(handler))
+
+    version = _deployable_version(sdk, "served")
+    ml.providers.register("my-ollama", base_url="http://gpu-box:11434", model="llama3")
+    dep = ml.deploy(version, target="local", provider="my-ollama")
+    assert dep.config["base_url"] == "http://gpu-box:11434"
+    assert dep.status == "active"  # health check is stubbed True in tests
+
+    reply = dep.chat([{"role": "user", "content": "ping"}])
+    assert reply["choices"][0]["message"]["content"] == "pong"
+    assert captured["url"].endswith("/v1/chat/completions")
+    assert captured["body"]["model"] == "llama3"  # from the registered provider
+
+    # predict() sugar wraps the prompt.
+    dep.predict({"prompt": "hi"})
+    assert captured["body"]["messages"] == [{"role": "user", "content": "hi"}]
+
+
+def test_deployment_hot_swap(sdk, monkeypatch):
+    import httpx
+    from app import serving
+
+    monkeypatch.setattr(
+        serving, "_transport", httpx.MockTransport(lambda r: httpx.Response(200, json={"ok": True}))
+    )
+    v1 = _deployable_version(sdk, "swap-a")
+    v2 = _deployable_version(sdk, "swap-b")
+    dep = ml.deploy(v1, target="local", config={"model": "a"})
+
+    dep.swap(model=v2, config={"model": "b"})
+    assert dep.model_version_id == v2.id
+    assert dep.config["model"] == "b"
+    assert dep.status == "active"
 
 
 def test_client_create_and_get_run(sdk):

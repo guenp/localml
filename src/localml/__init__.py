@@ -17,7 +17,7 @@ Public API::
 
 from __future__ import annotations
 
-from . import datasets, huggingface, jax, mlx, prompts, torch
+from . import datasets, evals, huggingface, jax, mlx, prompts, providers, torch
 from .config import Config, configure
 from .exceptions import (
     ArtifactUploadError,
@@ -29,9 +29,19 @@ from .exceptions import (
     PredictionFailedError,
     ValidationError,
 )
-from .ops import deploy, evaluate, log_artifact, log_metrics, log_params, predict, register_model
+from .ops import (
+    compare,
+    deploy,
+    evaluate,
+    log_artifact,
+    log_metrics,
+    log_params,
+    predict,
+    register_model,
+)
 from .run import start_run
 from .types import (
+    Comparison,
     Dataset,
     Deployment,
     EvaluationJob,
@@ -44,6 +54,7 @@ from .types import (
 __all__ = [
     "ArtifactUploadError",
     "AuthenticationError",
+    "Comparison",
     "Config",
     "Dataset",
     "Deployment",
@@ -58,9 +69,11 @@ __all__ = [
     "PromptVersion",
     "Run",
     "ValidationError",
+    "compare",
     "configure",
     "datasets",
     "deploy",
+    "evals",
     "evaluate",
     "huggingface",
     "jax",
@@ -70,6 +83,7 @@ __all__ = [
     "mlx",
     "predict",
     "prompts",
+    "providers",
     "register_model",
     "start_run",
     "torch",

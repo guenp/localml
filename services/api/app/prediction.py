@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -26,6 +25,7 @@ from typing import Any
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import background
 from .config import settings
 from .db import Dataset, PredictionJob, PromptVersion
 from .inference import InferenceProvider, get_provider
@@ -217,10 +217,5 @@ def read_results(job: PredictionJob) -> list[dict[str, Any]] | None:
 
 
 def schedule_inline(engine: Engine, job_id: str) -> None:
-    """Run a job on a daemon thread against ``engine`` (the no-Redis degradation path)."""
-    if not settings.inline_jobs:
-        return
-    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
-    threading.Thread(
-        target=run_prediction_job, args=(factory, job_id), daemon=True, name=f"predict-{job_id}"
-    ).start()
+    """Run a prediction job on a daemon thread (the no-Redis degradation path)."""
+    background.schedule_inline(engine, job_id, run_prediction_job, "predict")

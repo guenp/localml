@@ -13,15 +13,20 @@ datasets, evaluation jobs, local serving) at single-workstation scale. Full spec
 ## Layout
 
 - `src/localml/` — SDK. `client.py` (HTTPX + retries + idempotency), `ops.py` / `run.py`
-  (functional API: `ml.start_run`, `ml.log_metrics`, `ml.evaluate`, `ml.deploy`),
-  `datasets.py`, framework adapters (`torch`/`jax`/`mlx`/`huggingface`), `config.py`,
-  `types.py`, `exceptions.py`, `cli.py` (Typer).
+  (functional API: `ml.start_run`, `ml.log_metrics`, `ml.predict`, `ml.evaluate`, `ml.compare`,
+  `ml.deploy`), `datasets.py`, `prompts.py`, `evals.py` (metric registry + `ml.evals.run`),
+  `providers.py` (serving-backend registry), framework adapters
+  (`torch`/`jax`/`mlx`/`huggingface`), `config.py`, `types.py`, `exceptions.py`, `cli.py`
+  (Typer).
 - `services/api/app/` — control plane. `main.py` (app + lifespan), `db.py` (SQLAlchemy ORM =
   Postgres schema, source of truth), `session.py` (engine + `get_db`), `repositories.py`
   (idempotency, get-or-create, `name:version` resolution), `routers/`, `schemas.py` (Pydantic),
   `lifecycle.py` (state machine), `auth.py`, `queue.py` (Redis), `templating.py` (sandboxed
-  prompts), `inference.py` (providers), `prediction.py` (job loop), `worker.py` (queue
-  consumer), `integrations.py` (MLflow/MinIO, all defensive), `config.py`, `alembic/`.
+  prompts), `inference.py` (providers), `prediction.py` (predict loop), `evaluation.py`
+  (metric registry + scoring loop), `comparison.py` (report builder), `serving.py`
+  (OpenAI-compatible proxy + backend registry), `background.py` (shared in-process job
+  fallback), `worker.py` (queue consumer), `integrations.py` (MLflow/MinIO, all defensive),
+  `config.py`, `alembic/`.
 - The background worker runs from the **same image/codebase as the API**: Compose starts a
   second `services/api` container with `command: python -m app.worker`. There is no separate
   worker package.
@@ -46,7 +51,17 @@ datasets, evaluation jobs, local serving) at single-workstation scale. Full spec
 - **`name:version`** (e.g. `assistant:v1`) resolves server-side to canonical ids for models and
   datasets (`POST /resolve`, and inline in create paths).
 - **Serving = OpenAI-compatible proxy** (Ollama / MLX-LM / llama.cpp / vLLM), not a bespoke
-  inference server. Implemented in Phase 4; deployment records already carry the endpoint.
+  inference server. `serving.py` resolves a deployment to a backend `{base_url, model,
+  api_key}` (deployment `config` → registered backend → global serving URL) at request time
+  and forwards `/v1/chat/completions` + `/v1/completions` (buffered reply); `PATCH
+  /deployments/{id}` is hot swap. Creating a deployment health-checks the backend →
+  `active`/`degraded`. `serving._transport` is injectable for tests (httpx `MockTransport`).
+- **Prediction vs evaluation vs comparison.** Prediction runs inference once, writing per-row
+  JSONL. Evaluation (`evaluation.py`) scores a *completed* prediction's stored results with a
+  pluggable metric registry (`register_metric`); custom SDK metrics run client-side and are
+  posted as `client_metrics`. Comparison (`comparison.py`) aligns two prediction/eval jobs on
+  `example_id`. Evals key on `prediction_job_id` (nullable; the legacy `model_version_id` +
+  `dataset_uri` record-only shape still works).
 - **Lifecycle**: `created → candidate → staging → production → deprecated → archived`
   (+ `failed`); only `staging`/`production` are deployable. Invalid transition → 422; wrong
   state for an action → 409.

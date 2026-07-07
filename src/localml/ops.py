@@ -9,11 +9,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from . import evals
 from ._hashing import sha256_file
 from ._state import get_current_run
 from .adapters import base
 from .client import get_client
-from .types import Dataset, Deployment, EvaluationJob, ModelVersion, PredictionJob, PromptVersion
+from .types import (
+    Comparison,
+    Dataset,
+    Deployment,
+    EvaluationJob,
+    ModelVersion,
+    PredictionJob,
+    PromptVersion,
+)
 
 
 def log_metrics(metrics: dict[str, float], *, step: int | None = None) -> None:
@@ -99,19 +108,76 @@ def predict(
 
 def evaluate(
     model: ModelVersion | str,
-    dataset: str,
+    dataset: Dataset | str,
     metrics: list[str],
+    *,
+    prompt: PromptVersion | str | None = None,
+    provider: str = "openai",
+    config: dict[str, Any] | None = None,
+    predict_timeout: float = 600.0,
 ) -> EvaluationJob:
-    """Queue an evaluation job for a model version against a dataset."""
+    """Evaluate a model on a dataset — predict-then-eval sugar.
+
+    With ``prompt`` this queues a prediction job (``ml.predict``), waits for it to complete
+    (up to ``predict_timeout`` seconds), then queues an evaluation over the stored results —
+    equivalent to ``ml.evals.run(ml.predict(...).wait(), metrics)``. ``config`` is shared:
+    generation parameters and ``batch_size`` go to the prediction; metric parameters
+    (``expected_field``, ``pattern``, ...) to the evaluation.
+
+    Without ``prompt`` it falls back to the legacy record-only evaluation shape (kept for
+    compatibility; those jobs have no stored results to score).
+    """
+    if prompt is not None:
+        job = predict(model=model, dataset=dataset, prompt=prompt, provider=provider, config=config)
+        job.wait(timeout=predict_timeout)
+        return evals.run(job, metrics, config=config)
     model_version_id = model.id if isinstance(model, ModelVersion) else model
+    dataset_uri = dataset.id if isinstance(dataset, Dataset) else dataset
     return get_client().create_evaluation(
         model_version_id=model_version_id,
-        dataset_uri=dataset,
+        dataset_uri=dataset_uri,
         metrics=metrics,
     )
 
 
-def deploy(model: ModelVersion | str, target: str = "local") -> Deployment:
-    """Deploy a model version to a serving target (currently ``local``)."""
+def compare(
+    a: PredictionJob | EvaluationJob | str,
+    b: PredictionJob | EvaluationJob | str,
+    *,
+    max_examples: int = 20,
+) -> Comparison:
+    """Compare two prediction/evaluation jobs across aligned ``example_id``s.
+
+    Pass job handles or ids. When both are evaluation jobs the report includes per-metric
+    a/b/delta values; row alignment always comes from the underlying predictions' stored
+    results. ``max_examples`` caps the changed-example samples returned.
+    """
+    ref_a = a if isinstance(a, str) else a.id
+    ref_b = b if isinstance(b, str) else b.id
+    return get_client().compare(ref_a, ref_b, max_examples=max_examples)
+
+
+def deploy(
+    model: ModelVersion | str,
+    target: str = "local",
+    *,
+    provider: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> Deployment:
+    """Deploy a model version to a serving target.
+
+    ``provider`` names a backend registered with :func:`ml.providers.register`; its
+    connection details (``base_url``/``model``/``api_key``) are merged into ``config``.
+    ``config`` carries backend overrides resolved at proxy time; when neither is given the
+    target's registered backend (or the server's serving URL) is used. The returned
+    deployment is ``active`` when the backend answered a health check, ``degraded`` otherwise.
+    """
+    from . import providers
+
     model_version_id = model.id if isinstance(model, ModelVersion) else model
-    return get_client().create_deployment(model_version_id=model_version_id, target=target)
+    merged = dict(config or {})
+    if provider is not None:
+        merged = {**providers.config_for(provider), **merged}
+    return get_client().create_deployment(
+        model_version_id=model_version_id, target=target, config=merged
+    )

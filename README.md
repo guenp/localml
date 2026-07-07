@@ -9,9 +9,11 @@ storage, evaluation jobs, and local model serving.
 
 > Status: **under active development.** The control plane (Phase 1 — durable Postgres-backed
 > metadata, lifecycle, idempotency, dataset registry), the Python SDK (Phase 2 — real HTTPX
-> client, run tracking, artifact checksums, framework-adapter packaging), the prompt registry
-> (Phase 3 M1), and worker-run prediction jobs (Phase 3 M2) are implemented and tested.
-> Evaluation jobs over stored predictions and the local serving proxy are next. See
+> client, run tracking, artifact checksums, framework-adapter packaging), and the full
+> predict → evaluate → compare loop (Phase 3 — prompt registry, worker-run prediction jobs,
+> evaluation jobs with a pluggable metric registry, comparison reports) plus the local
+> OpenAI-compatible serving proxy with hot model swap (Phase 4) are implemented and tested.
+> Interfaces/DX and quality/ops (Phases 5–6) are next. See
 > [`ROADMAP.md`](./ROADMAP.md) for status and [`docs/design.md`](./docs/design.md) for the full
 > software design document.
 
@@ -22,9 +24,11 @@ localml/
 ├── src/localml/          # Python SDK (`import localml as ml`)
 │   ├── adapters/         # torch / jax / mlx / huggingface framework adapters
 │   ├── client.py         # HTTPX client for the control plane (retry + idempotency)
-│   ├── ops.py            # ml.log_metrics / log_artifact / evaluate / deploy
+│   ├── ops.py            # ml.log_metrics / log_artifact / predict / evaluate / compare / deploy
 │   ├── datasets.py       # ml.datasets.register / get
 │   ├── prompts.py        # ml.prompts.register / get / render
+│   ├── evals.py          # ml.evals.run / register_metric (metric registry)
+│   ├── providers.py      # ml.providers.register (serving-backend registry)
 │   ├── config.py         # env → ~/.localml/config.toml → defaults
 │   ├── exceptions.py     # typed SDK errors
 │   ├── run.py            # run context manager
@@ -98,12 +102,15 @@ with ml.start_run(project="local", config={"model": "tiny-llm"}) as run:
         metadata={"task": "chat", "runtime": "mlx"},
     )
 
-    eval_job = ml.evaluate(
-        model=version,
-        dataset="datasets/eval.jsonl",
-        metrics=["exact_match", "latency_p95"],
-    )
+    prompt = ml.prompts.register(name="qa", template="Q: {question}\nA:")
+    dataset = ml.datasets.register(project="local", name="evalset",
+                                   artifact_uri="datasets/eval.jsonl", rows=rows)
+
+    # Predict-then-eval sugar: runs a prediction job, waits, then scores the stored results.
+    eval_job = ml.evaluate(version, dataset, ["exact_match", "latency_p95"],
+                           prompt=prompt, provider="echo")
     eval_job.wait()
+    print(eval_job.metrics)
 
     deployment = ml.deploy(model=version, target="local")
     print(deployment.predict({"prompt": "Explain model registries simply."}))
@@ -122,6 +129,12 @@ localml prompts render <name> <version> --var key=value
 localml predictions run <model:v> <dataset:v> <prompt:v> --config '{"batch_size": 4}'
 localml predictions status <job_id>
 localml predictions results <job_id>
+localml evals run <prediction_job_id> -m exact_match -m error_rate
+localml evals status <eval_job_id>
+localml compare <job_a> <job_b>
+localml deployments create <model:v> --config '{"base_url": "http://localhost:11434"}'
+localml deployments swap <deployment_id> --model <model:v>
+localml deployments predict <deployment_id> "Explain model registries simply."
 ```
 
 ## Prompt registry
@@ -161,10 +174,10 @@ are accepted.
 ## Prediction jobs
 
 Batch inference is a background job, decoupled from evaluation: outputs are stored once as a
-JSONL artifact and scored separately (Phase 3 M3), so evals can re-run without re-inferring.
-A job resolves a **model + dataset + prompt** triple, renders the prompt per dataset row, and
-sends it to an inference provider — by default any **OpenAI-compatible** backend (Ollama,
-MLX-LM, llama.cpp, vLLM) at `config["base_url"]`:
+JSONL artifact and scored separately, so evals can re-run without re-inferring. A job resolves
+a **model + dataset + prompt** triple, renders the prompt per dataset row, and sends it to an
+inference provider — by default any **OpenAI-compatible** backend (Ollama, MLX-LM, llama.cpp,
+vLLM) at `config["base_url"]`:
 
 ```python
 job = ml.predict(
@@ -183,6 +196,40 @@ column fails fast with a 422), progress is checkpointed per batch so a re-run sk
 examples, and a failing example emits a result row with `error` set instead of failing the
 job. Jobs run on the Redis-backed worker; without Redis (e.g. the standalone SQLite setup)
 they run on a background thread in the API process, so the flow works everywhere.
+
+## Evaluation & comparison
+
+An evaluation scores a **completed** prediction job's stored results with registered metrics —
+`exact_match`, `contains_expected`, `regex_match`, `format_validity`, `json_validity`,
+`latency_p50/p95/p99`, `error_rate`, `avg_input/output_tokens` — and can re-run without
+re-inferring. Custom metrics registered with `ml.evals.register_metric` run client-side over
+the stored results. `ml.compare` diffs two prediction/eval variants across aligned
+`example_id`s (what changed, output agreement, latency and per-metric deltas):
+
+```python
+prediction = ml.predict(model="assistant:v1", dataset="eval-set:v1", prompt="qa:v2").wait()
+eval_job = ml.evals.run(prediction, ["exact_match", "latency_p95"],
+                        config={"expected_field": "answer"}).wait()
+print(eval_job.metrics)
+
+# Compare two prompt variants scored the same way.
+report = ml.compare(eval_a, eval_b)
+print(report.differs, report.metrics)  # e.g. ['prompt_version'], {'exact_match': {...}}
+```
+
+## Local serving
+
+Serving is a thin **OpenAI-compatible proxy**, not a bespoke inference server: a deployment
+resolves to a backend `{base_url, model, api_key}` and forwards `/v1/chat/completions` to a
+local runtime (Ollama, MLX-LM, llama.cpp, vLLM). A hot swap repoints the backend/model with no
+restart:
+
+```python
+ml.providers.register("my-ollama", base_url="http://localhost:11434", model="llama3")
+deployment = ml.deploy("assistant:v1", provider="my-ollama")
+print(deployment.chat([{"role": "user", "content": "Explain model registries simply."}]))
+deployment.swap(model="assistant:v2")  # no process restart
+```
 
 ## Development
 

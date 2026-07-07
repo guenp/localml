@@ -184,16 +184,31 @@ class PredictionJob(Base):
 
 
 class EvaluationJob(Base):
+    """Scores a completed prediction job's stored results against registered metrics.
+
+    Phase 3 M3: keyed on ``prediction_job_id`` (evaluations re-run without re-inferring).
+    ``model_version_id``/``dataset_id`` are denormalized from the prediction for querying;
+    they stay nullable so legacy pre-M3 rows (bare model + dataset URI, record-only) remain
+    valid. ``config["metrics"]`` holds the requested metric names.
+    """
+
     __tablename__ = "evaluation_jobs"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    model_version_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id"), index=True)
+    prediction_job_id: Mapped[str | None] = mapped_column(
+        ForeignKey("prediction_jobs.id"), nullable=True, index=True
+    )
+    model_version_id: Mapped[str | None] = mapped_column(
+        ForeignKey("model_versions.id"), nullable=True, index=True
+    )
     dataset_id: Mapped[str | None] = mapped_column(ForeignKey("datasets.id"), nullable=True)
     status: Mapped[str] = mapped_column(Text, index=True)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     report_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    prediction_job: Mapped[PredictionJob | None] = relationship()
     metrics_rows: Mapped[list[EvaluationMetric]] = relationship(back_populates="job")
 
 
@@ -214,10 +229,15 @@ class Deployment(Base):
     target: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, index=True)
     endpoint_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Per-deployment backend overrides (base_url / model / api_key), resolved at proxy time —
+    # hot model swap is a PATCH that updates these (or the target); no process restart.
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+
+    model_version: Mapped[ModelVersion] = relationship()
 
 
 class AuditEvent(Base):

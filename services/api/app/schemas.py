@@ -56,15 +56,31 @@ class PromoteRequest(BaseModel):
 
 
 class CreateEvaluationRequest(BaseModel):
-    model_version_id: str
-    dataset_uri: str
-    metrics: list[str]
+    # Phase 3 shape: score a completed prediction job's stored results.
+    prediction: str | None = None  # prediction-job id
+    metrics: list[str] = Field(default_factory=list)
     config: dict[str, Any] = Field(default_factory=dict)
+    # Custom metrics computed client-side by the SDK (the server can't run user code);
+    # persisted with the job alongside the worker-computed built-ins.
+    client_metrics: dict[str, float] = Field(default_factory=dict)
+    # Legacy pre-M3 shape (record-only; kept for compatibility).
+    model_version_id: str | None = None
+    dataset_uri: str | None = None
 
 
 class CreateDeploymentRequest(BaseModel):
-    model_version_id: str
+    model_version_id: str  # id or name:version
     target: str = "local"
+    # Backend overrides resolved at proxy time: base_url, model, api_key.
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class UpdateDeploymentRequest(BaseModel):
+    """Hot swap: repoint the deployment's model version, target, or backend config."""
+
+    model_version_id: str | None = None  # id or name:version
+    target: str | None = None
+    config: dict[str, Any] | None = None  # merged over the existing config
 
 
 class RegisterDatasetRequest(BaseModel):
@@ -134,10 +150,12 @@ class ModelResponse(BaseModel):
 
 class EvaluationJobResponse(BaseModel):
     id: str
-    model_version_id: str
+    prediction_job_id: str | None = None
+    model_version_id: str | None = None
     status: str
     metrics: dict[str, float] | None = None
     report_uri: str | None = None
+    error: str | None = None
 
 
 class PredictionJobResponse(BaseModel):
@@ -166,6 +184,7 @@ class DeploymentResponse(BaseModel):
     target: str
     status: str
     endpoint_url: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class DatasetResponse(BaseModel):
@@ -195,6 +214,49 @@ class RenderPromptResponse(BaseModel):
     name: str
     version: str
     rendered: str
+
+
+class ComparisonSide(BaseModel):
+    job_id: str  # the referenced job (evaluation id when the reference was an evaluation)
+    prediction_job_id: str
+    model_version_id: str
+    prompt_version_id: str
+    dataset_id: str
+    provider: str
+    metrics: dict[str, float] | None = None  # present when the side is an evaluation
+
+
+class ValueDelta(BaseModel):
+    a: float | None = None
+    b: float | None = None
+    delta: float | None = None  # b - a when both sides have a value
+
+
+class ComparisonRows(BaseModel):
+    aligned: int
+    only_in_a: int
+    only_in_b: int
+    both_succeeded: int
+    agreements: int  # aligned rows where both succeeded with identical outputs
+    a_errored: int
+    b_errored: int
+    mean_latency_ms: ValueDelta
+
+
+class ChangedExample(BaseModel):
+    example_id: str
+    output_a: str | None = None
+    output_b: str | None = None
+
+
+class ComparisonResponse(BaseModel):
+    kind: str  # "evaluation" when both references are evaluation jobs, else "prediction"
+    a: ComparisonSide
+    b: ComparisonSide
+    differs: list[str] = Field(default_factory=list)
+    metrics: dict[str, ValueDelta] = Field(default_factory=dict)
+    rows: ComparisonRows
+    changed_examples: list[ChangedExample] = Field(default_factory=list)
 
 
 class ResolveReferenceResponse(BaseModel):

@@ -136,12 +136,15 @@ class PredictionJob:
 
 @dataclass
 class EvaluationJob:
-    """Background job that evaluates a model version against a dataset."""
+    """Background job that scores a completed prediction job's stored results."""
 
     id: str
-    model_version_id: str
+    model_version_id: str | None = None
+    prediction_job_id: str | None = None
     status: str = "queued"
     metrics: dict[str, float] | None = None
+    report_uri: str | None = None
+    error: str | None = None
     _client: Client | None = field(default=None, repr=False, compare=False)
 
     _TERMINAL = frozenset({"completed", "failed"})
@@ -151,8 +154,8 @@ class EvaluationJob:
         if self._client is None:
             return self
         latest = self._client.get_evaluation(self.id)
-        self.status = latest.status
-        self.metrics = latest.metrics
+        for name in ("status", "metrics", "report_uri", "error"):
+            setattr(self, name, getattr(latest, name))
         return self
 
     def wait(self, *, timeout: float = 600.0, poll_interval: float = 1.0) -> EvaluationJob:
@@ -174,23 +177,73 @@ class EvaluationJob:
                 f"evaluation {self.id} timed out (status={self.status})"
             ) from exc
         if status == "failed":
-            raise EvaluationFailedError(f"evaluation {self.id} failed")
+            raise EvaluationFailedError(f"evaluation {self.id} failed: {self.error}")
         return self
 
 
 @dataclass
+class Comparison:
+    """Report comparing two prediction/evaluation jobs across aligned example ids.
+
+    ``kind`` is ``"evaluation"`` when both references were evaluation jobs (then ``metrics``
+    holds per-metric a/b/delta values), else ``"prediction"``. ``differs`` names what varied
+    between the variants (model_version, prompt_version, dataset, provider, config).
+    """
+
+    kind: str
+    a: dict[str, Any]
+    b: dict[str, Any]
+    differs: list[str] = field(default_factory=list)
+    metrics: dict[str, dict[str, float | None]] = field(default_factory=dict)
+    rows: dict[str, Any] = field(default_factory=dict)
+    changed_examples: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
 class Deployment:
-    """Active or historical serving configuration for a model version."""
+    """Active or historical serving configuration for a model version.
+
+    ``status`` is ``active`` when the serving backend answered a health check, ``degraded``
+    when it didn't (the proxy resolves the backend per request, so a backend that comes up
+    later starts working without redeploying), or ``inactive`` after deletion.
+    """
 
     id: str
     model_version_id: str
     target: str = "local"
     status: str = "active"
     endpoint_url: str | None = None
+    config: dict[str, Any] = field(default_factory=dict)
     _client: Client | None = field(default=None, repr=False, compare=False)
 
-    def predict(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Send a prediction request to the deployed model's endpoint."""
+    def _bound(self) -> Client:
         if self._client is None:
             raise RuntimeError("deployment is not bound to a client")
-        return self._client.predict(self.id, payload)
+        return self._client
+
+    def predict(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Round-trip a non-streaming request through the proxy (``prompt`` or ``messages``)."""
+        return self._bound().deployment_predict(self.id, payload)
+
+    def chat(self, messages: list[dict[str, Any]], **params: Any) -> dict[str, Any]:
+        """Send an OpenAI chat-completions request through the deployment's proxy."""
+        return self._bound().deployment_chat(self.id, messages, **params)
+
+    def swap(
+        self,
+        *,
+        model: ModelVersion | str | None = None,
+        target: str | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> Deployment:
+        """Hot swap: repoint this deployment's model version, target, or backend config.
+
+        Refreshes this handle in place from the server's response.
+        """
+        model_version_id = model.id if isinstance(model, ModelVersion) else model
+        latest = self._bound().update_deployment(
+            self.id, model_version_id=model_version_id, target=target, config=config
+        )
+        for name in ("model_version_id", "target", "status", "endpoint_url", "config"):
+            setattr(self, name, getattr(latest, name))
+        return self

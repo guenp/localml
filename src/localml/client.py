@@ -24,6 +24,7 @@ from .exceptions import (
     ValidationError,
 )
 from .types import (
+    Comparison,
     Dataset,
     Deployment,
     EvaluationJob,
@@ -318,59 +319,126 @@ class Client:
     # -- evaluations -------------------------------------------------------------
 
     def create_evaluation(
-        self, model_version_id: str, dataset_uri: str, metrics: list[str]
+        self,
+        model_version_id: str | None = None,
+        dataset_uri: str | None = None,
+        metrics: list[str] | None = None,
+        *,
+        prediction: str | None = None,
+        config: dict[str, Any] | None = None,
+        client_metrics: dict[str, float] | None = None,
     ) -> EvaluationJob:
+        """Create an evaluation job: pass ``prediction`` (job id) or the legacy pair."""
         data = self._request(
             "POST",
             "/evaluations",
             idempotent=True,
             json={
+                "prediction": prediction,
+                "metrics": metrics or [],
+                "config": config or {},
+                "client_metrics": client_metrics or {},
                 "model_version_id": model_version_id,
                 "dataset_uri": dataset_uri,
-                "metrics": metrics,
             },
         )
+        return self._evaluation_from(data)
+
+    def get_evaluation(self, job_id: str) -> EvaluationJob:
+        return self._evaluation_from(self._request("GET", f"/evaluations/{job_id}"))
+
+    def _evaluation_from(self, data: dict[str, Any]) -> EvaluationJob:
         return EvaluationJob(
             id=data["id"],
-            model_version_id=data["model_version_id"],
+            model_version_id=data.get("model_version_id"),
+            prediction_job_id=data.get("prediction_job_id"),
             status=data.get("status", "queued"),
             metrics=data.get("metrics"),
+            report_uri=data.get("report_uri"),
+            error=data.get("error"),
             _client=self,
         )
 
-    def get_evaluation(self, job_id: str) -> EvaluationJob:
-        data = self._request("GET", f"/evaluations/{job_id}")
-        return EvaluationJob(
-            id=data["id"],
-            model_version_id=data["model_version_id"],
-            status=data["status"],
-            metrics=data.get("metrics"),
-            _client=self,
+    # -- comparisons -------------------------------------------------------------
+
+    def compare(self, a: str, b: str, *, max_examples: int = 20) -> Comparison:
+        data = self._request(
+            "GET", "/compare", params={"a": a, "b": b, "max_examples": max_examples}
+        )
+        return Comparison(
+            kind=data["kind"],
+            a=data["a"],
+            b=data["b"],
+            differs=data.get("differs", []),
+            metrics=data.get("metrics", {}),
+            rows=data.get("rows", {}),
+            changed_examples=data.get("changed_examples", []),
         )
 
     # -- deployments -------------------------------------------------------------
 
-    def create_deployment(self, model_version_id: str, target: str) -> Deployment:
+    def create_deployment(
+        self, model_version_id: str, target: str, config: dict[str, Any] | None = None
+    ) -> Deployment:
         try:
             data = self._request(
                 "POST",
                 "/deployments",
                 idempotent=True,
-                json={"model_version_id": model_version_id, "target": target},
+                json={
+                    "model_version_id": model_version_id,
+                    "target": target,
+                    "config": config or {},
+                },
             )
         except ValidationError as exc:
             raise DeploymentError(str(exc)) from exc
+        return self._deployment_from(data)
+
+    def update_deployment(
+        self,
+        deployment_id: str,
+        *,
+        model_version_id: str | None = None,
+        target: str | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> Deployment:
+        try:
+            data = self._request(
+                "PATCH",
+                f"/deployments/{deployment_id}",
+                json={
+                    "model_version_id": model_version_id,
+                    "target": target,
+                    "config": config,
+                },
+            )
+        except ValidationError as exc:
+            raise DeploymentError(str(exc)) from exc
+        return self._deployment_from(data)
+
+    def _deployment_from(self, data: dict[str, Any]) -> Deployment:
         return Deployment(
             id=data["id"],
             model_version_id=data["model_version_id"],
             target=data["target"],
             status=data.get("status", "active"),
             endpoint_url=data.get("endpoint_url"),
+            config=data.get("config", {}),
             _client=self,
         )
 
-    def predict(self, deployment_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def deployment_predict(self, deployment_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", f"/deployments/{deployment_id}/predict", json=payload)
+
+    def deployment_chat(
+        self, deployment_id: str, messages: list[dict[str, Any]], **params: Any
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/deployments/{deployment_id}/v1/chat/completions",
+            json={"messages": messages, "stream": False, **params},
+        )
 
     def close(self) -> None:
         self._http.close()

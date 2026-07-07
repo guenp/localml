@@ -109,41 +109,53 @@ scored (and re-scored) without re-running inference, and variants can be compare
 - [x] SDK `ml.predict(...)` handle with `.wait()` and `.results()`; CLI
       `predictions run/status/results`.
 
-### M3 — Evaluation jobs (score stored results)
+### M3 — Evaluation jobs (score stored results) ✅
 
-- [ ] `EvaluationJob` keyed on `prediction_job_id` (**additive** migration: keep legacy
-      `model_version_id`/`dataset_id` columns nullable; existing `evaluate(model, dataset)`
-      becomes predict-then-eval sugar).
-- [ ] Pluggable metric registry (`ml.evals.register_metric`); built-ins:
-      `exact_match`, `contains_expected`, `regex_match`, `format_validity`, `json_validity`,
-      `latency_p50/p95/p99`, `error_rate`, `avg_input/output_tokens`.
-- [ ] Evaluation report written to MinIO; metrics logged to MLflow + Postgres.
-- [ ] Job status transitions (queued → running → completed/failed) with traceback capture
-      and bounded retries.
-- [ ] SDK (`ml.evals.run`) + CLI (`localml evals run`).
+- [x] `EvaluationJob` keyed on `prediction_job_id` (**additive** `0004` migration: legacy
+      `model_version_id`/`dataset_id` columns relaxed to nullable; `evaluate(model, dataset,
+      metrics, prompt=...)` becomes predict-then-eval sugar, and the pre-M3 record-only shape
+      still works).
+- [x] Pluggable metric registry (`app.evaluation.register_metric` server-side,
+      `ml.evals.register_metric` client-side); built-ins: `exact_match`, `contains_expected`,
+      `regex_match`, `format_validity`, `json_validity`, `latency_p50/p95/p99`, `error_rate`,
+      `avg_input/output_tokens`. Custom metrics run client-side (the server can't import user
+      code) and are persisted with the job.
+- [x] Evaluation report written to the results dir (uploaded to MinIO when available); metric
+      rows persisted to Postgres; metrics logged to MLflow defensively.
+- [x] Job status transitions (queued → running → completed/failed) with traceback capture and
+      bounded retries (deterministic failures skip the retry loop).
+- [x] SDK (`ml.evals.run`) + CLI (`localml evals run/status`).
 
-### M4 — Comparison reports
+### M4 — Comparison reports ✅
 
-- [ ] Compare two prediction/eval jobs across aligned `example_id`s (model / prompt /
-      config / dataset-slice variants).
-- [ ] SDK (`ml.compare(...)`) + CLI (`localml compare <a> <b>`) summary output.
+- [x] Compare two prediction/eval jobs across aligned `example_id`s (model / prompt / config /
+      provider / dataset variants): variant diff, row alignment (agreement + error counts,
+      mean-latency delta), per-metric a/b/delta values for eval comparisons, capped
+      changed-example samples. An evaluation reference compares through its prediction.
+- [x] SDK (`ml.compare(...)` → `Comparison`) + CLI (`localml compare <a> <b>`) output.
 
-## Phase 4 — Local serving, providers + deployment
+## Phase 4 — Local serving, providers + deployment ✅
 
 Serving is an **OpenAI-compatible proxy**, not a bespoke inference service: the control plane
 resolves a deployment to a backend `base_url` + model id and forwards `/v1/chat/completions`
 (and `/v1/completions`) to a local OpenAI-compatible server (Ollama / MLX-LM / llama.cpp /
-vLLM). This reuses the Phase 3 `InferenceProvider` and keeps localml out of the token-decoding
-business.
+vLLM). This reuses the Phase 3 provider wire format and keeps localml out of the
+token-decoding business.
 
-- [ ] Thin proxy router: `POST /deployments/{id}/v1/chat/completions` (and `/predict` sugar)
-      forwards to the deployment's backend and streams the response back.
-- [ ] Backend registry: map a deployment target to `{base_url, model, api_key?}`; **custom
-      provider registration** (`ml.providers.register("custom", fn)`) for non-OpenAI backends.
-- [ ] Deployment flow: validate lifecycle state → resolve artifact/model id → health-check the
-      backend → mark active (endpoint already surfaced in Phase 1).
-- [ ] `Deployment.predict()` / `.chat()` round-trip through the proxy.
-- [ ] Hot model swap = repoint the deployment's backend/model; no process restart.
+- [x] Thin proxy router: `POST /deployments/{id}/v1/chat/completions` and `/v1/completions`
+      (plus `/predict` prompt→messages sugar) forward to the deployment's backend and return
+      its reply. (The upstream response is buffered — adequate at single-workstation scale;
+      SSE passthrough streaming is a future enhancement.)
+- [x] Backend registry: map a deployment target to `{base_url, model, api_key?}`
+      (`app.serving.register_backend`); **custom provider registration**
+      (`ml.providers.register(name, base_url=, model=, api_key=)`) names a backend whose
+      connection details expand into the deployment config.
+- [x] Deployment flow: validate lifecycle state → resolve the backend → health-check it
+      (`GET /v1/models`) → mark `active`/`degraded` (the proxy re-resolves per request, so a
+      backend that comes up later works without redeploying).
+- [x] `Deployment.predict()` / `.chat()` round-trip through the proxy.
+- [x] Hot model swap = `PATCH /deployments/{id}` repoints the deployment's model version /
+      target / backend config; no process restart.
 
 ## Phase 5 — Interfaces & DX
 
