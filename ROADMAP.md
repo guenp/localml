@@ -157,16 +157,20 @@ token-decoding business.
 - [x] Hot model swap = `PATCH /deployments/{id}` repoints the deployment's model version /
       target / backend config; no process restart.
 
-## Phase 5 — Interfaces & DX
+## Phase 5 — Interfaces & DX ✅
 
-- [ ] Flesh out the Typer CLI (projects, runs, models, datasets, prompts, predictions,
-      evals, compare, deployments).
-- [ ] Optional Streamlit dashboard (projects, runs, metrics, predictions, evals, comparison,
-      deploy, inference panel).
-- [ ] Notebook quickstart + a **predict/eval loop notebook**: resolve a model, register a
-      JSONL dataset, register two prompt versions, run predictions for both, evaluate, and
-      compare to pick the better prompt/config.
-- [ ] Generated and checked-in OpenAPI schema.
+- [x] Flesh out the Typer CLI (projects, runs, models, datasets, prompts, predictions,
+      evals, compare, deployments) — every resource group now covers its endpoints, plus a
+      top-level `localml version` / `localml dashboard`.
+- [x] Optional Streamlit dashboard (`localml dashboard`, gated behind the `dashboard` extra):
+      runs, prediction jobs, evaluations, comparison, and a deploy/inference panel over the
+      shared HTTP client.
+- [x] Notebook quickstart (`notebooks/quickstart.ipynb`) + a **predict/eval loop notebook**
+      (`notebooks/predict_eval_loop.ipynb`): resolve a model, register a JSONL dataset,
+      register two prompt versions, run predictions for both, evaluate, and compare to pick the
+      better prompt/config.
+- [x] Generated and checked-in OpenAPI schema (`docs/openapi.json` via
+      `scripts/export_openapi.py`; a drift test keeps it in sync with the app).
 
 ## Phase 6 — Quality & ops
 

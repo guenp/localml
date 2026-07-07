@@ -8,6 +8,17 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- **Phase 5 — Interfaces & DX.** The Typer CLI now covers every resource group's endpoints:
+  `projects create/get`, `datasets register/get/version`, `models version/promote`, and
+  `deployments get/delete` join the existing prompts/predictions/evals/compare/deployments
+  commands, plus top-level `localml version` and `localml dashboard`. An optional Streamlit
+  dashboard (`localml dashboard`, gated behind the `dashboard` extra) inspects runs, prediction
+  jobs, evaluations and comparisons and routes a prompt through a deployment's serving proxy,
+  all over the same HTTP client the SDK/CLI use. Two quickstart notebooks ship in `notebooks/`
+  — a full SDK tour (`quickstart.ipynb`) and the predict → evaluate → compare loop
+  (`predict_eval_loop.ipynb`). The control plane's OpenAPI schema is generated and checked in
+  (`docs/openapi.json` via `scripts/export_openapi.py`), with a test that fails if it drifts
+  from the live app.
 - **Phase 4 — Local serving proxy.** Serving is an OpenAI-compatible proxy, not a bespoke
   inference server. A backend registry maps a deployment target to a `{base_url, model,
   api_key}`, resolved at request time (deployment `config` → registered backend → the global

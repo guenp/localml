@@ -217,3 +217,73 @@ def test_runs_and_models_get(stub):
     assert runner.invoke(cli.app, ["runs", "get", "r1"]).exit_code == 0
     assert runner.invoke(cli.app, ["models", "get", "m"]).exit_code == 0
     assert [r[:2] for r in stub.requests] == [("GET", "/runs/r1"), ("GET", "/models/m")]
+
+
+def test_version_command():
+    result = runner.invoke(cli.app, ["version"])
+    assert result.exit_code == 0
+    assert "localml" in result.stdout
+
+
+def test_projects_create_and_get(stub):
+    create = runner.invoke(cli.app, ["projects", "create", "proj", "--description", "hi"])
+    assert create.exit_code == 0
+    method, path, kwargs = stub.requests[0]
+    assert (method, path) == ("POST", "/projects")
+    assert kwargs["json"] == {"name": "proj", "description": "hi"}
+    assert kwargs["idempotent"] is True
+
+    assert runner.invoke(cli.app, ["projects", "get", "p1"]).exit_code == 0
+    assert stub.requests[1][:2] == ("GET", "/projects/p1")
+
+
+def test_models_version_and_promote(stub):
+    assert runner.invoke(cli.app, ["models", "version", "m", "v1"]).exit_code == 0
+    assert stub.requests[0][:2] == ("GET", "/models/m/versions/v1")
+
+    promote = runner.invoke(cli.app, ["models", "promote", "m", "v1", "--to", "staging"])
+    assert promote.exit_code == 0
+    method, path, kwargs = stub.requests[1]
+    assert (method, path) == ("POST", "/models/m/versions/v1/promote")
+    assert kwargs["json"] == {"target_status": "staging"}
+
+
+def test_datasets_register_with_rows_file(stub, tmp_path):
+    rows = tmp_path / "rows.jsonl"
+    rows.write_text('{"q": "a"}\n\n{"q": "b"}\n')
+    result = runner.invoke(
+        cli.app,
+        [
+            "datasets",
+            "register",
+            "evalset",
+            "--artifact-uri",
+            "datasets/e.jsonl",
+            "--file",
+            str(rows),
+        ],
+    )
+    assert result.exit_code == 0
+    method, path, kwargs = stub.requests[0]
+    assert (method, path) == ("POST", "/datasets")
+    assert kwargs["json"]["rows"] == [{"q": "a"}, {"q": "b"}]  # blank lines skipped
+    assert kwargs["json"]["name"] == "evalset"
+    assert kwargs["idempotent"] is True
+
+
+def test_datasets_get_and_version(stub):
+    assert runner.invoke(cli.app, ["datasets", "get", "evalset"]).exit_code == 0
+    assert runner.invoke(cli.app, ["datasets", "version", "evalset", "v1"]).exit_code == 0
+    assert [r[:2] for r in stub.requests] == [
+        ("GET", "/datasets/evalset"),
+        ("GET", "/datasets/evalset/versions/v1"),
+    ]
+
+
+def test_deployments_get_and_delete(stub):
+    assert runner.invoke(cli.app, ["deployments", "get", "dep-1"]).exit_code == 0
+    assert runner.invoke(cli.app, ["deployments", "delete", "dep-1"]).exit_code == 0
+    assert [r[:2] for r in stub.requests] == [
+        ("GET", "/deployments/dep-1"),
+        ("DELETE", "/deployments/dep-1"),
+    ]
