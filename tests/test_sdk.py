@@ -17,6 +17,14 @@ def test_public_api_surface():
         assert hasattr(ml, fw)
 
 
+def test_evals_register_metric_validates(monkeypatch):
+    monkeypatch.setattr(ml.evals, "_LOCAL_METRICS", {})
+    ml.evals.register_metric("mine", lambda records, config: 1.0)
+    assert "mine" in ml.evals._LOCAL_METRICS
+    with pytest.raises(TypeError):
+        ml.evals.register_metric("bad", "not callable")  # type: ignore[arg-type]
+
+
 def test_exception_hierarchy():
     assert issubclass(EvaluationFailedError, LocalMLError)
 

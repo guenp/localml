@@ -132,6 +132,45 @@ def test_predictions_status_and_results(stub):
     ]
 
 
+def test_evals_run(stub):
+    result = runner.invoke(
+        cli.app,
+        [
+            "evals",
+            "run",
+            "job-1",
+            "-m",
+            "exact_match",
+            "--metric",
+            "error_rate",
+            "--config",
+            '{"expected_field": "label"}',
+        ],
+    )
+    assert result.exit_code == 0
+    method, path, kwargs = stub.requests[0]
+    assert (method, path) == ("POST", "/evaluations")
+    assert kwargs["json"] == {
+        "prediction": "job-1",
+        "metrics": ["exact_match", "error_rate"],
+        "config": {"expected_field": "label"},
+    }
+    assert kwargs["idempotent"] is True
+
+
+def test_evals_run_rejects_malformed_config(stub):
+    result = runner.invoke(
+        cli.app, ["evals", "run", "job-1", "-m", "error_rate", "--config", "not-json"]
+    )
+    assert result.exit_code != 0
+    assert not stub.requests
+
+
+def test_evals_status(stub):
+    assert runner.invoke(cli.app, ["evals", "status", "e1"]).exit_code == 0
+    assert stub.requests[0][:2] == ("GET", "/evaluations/e1")
+
+
 def test_runs_and_models_get(stub):
     assert runner.invoke(cli.app, ["runs", "get", "r1"]).exit_code == 0
     assert runner.invoke(cli.app, ["models", "get", "m"]).exit_code == 0

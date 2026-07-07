@@ -21,11 +21,13 @@ runs_app = typer.Typer(help="Inspect runs")
 models_app = typer.Typer(help="Inspect model versions")
 prompts_app = typer.Typer(help="Manage versioned prompt templates")
 predictions_app = typer.Typer(help="Run and inspect prediction jobs")
+evals_app = typer.Typer(help="Score stored prediction results with registered metrics")
 app.add_typer(projects_app, name="projects")
 app.add_typer(runs_app, name="runs")
 app.add_typer(models_app, name="models")
 app.add_typer(prompts_app, name="prompts")
 app.add_typer(predictions_app, name="predictions")
+app.add_typer(evals_app, name="evals")
 
 
 def _echo(obj: Any) -> None:
@@ -151,6 +153,35 @@ def predictions_status(job_id: str) -> None:
 def predictions_results(job_id: str) -> None:
     """Fetch a prediction job's per-example results."""
     _echo(get_client()._request("GET", f"/predictions/{job_id}/results"))
+
+
+@evals_app.command("run")
+def evals_run(
+    prediction: str = typer.Argument(help="Completed prediction-job id to score"),
+    metric: list[str] = typer.Option(
+        ..., "--metric", "-m", help="Metric name (repeat; e.g. exact_match, error_rate)"
+    ),
+    config: str = typer.Option("{}", help="Metric config as JSON (expected_field, pattern, ...)"),
+) -> None:
+    """Queue an evaluation of a completed prediction job's stored results."""
+    try:
+        config_obj = json.loads(config)
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter(f"--config must be valid JSON: {exc}") from exc
+    _echo(
+        get_client()._request(
+            "POST",
+            "/evaluations",
+            idempotent=True,
+            json={"prediction": prediction, "metrics": metric, "config": config_obj},
+        )
+    )
+
+
+@evals_app.command("status")
+def evals_status(job_id: str) -> None:
+    """Fetch an evaluation job's status, metrics, and report location."""
+    _echo(get_client()._request("GET", f"/evaluations/{job_id}"))
 
 
 if __name__ == "__main__":

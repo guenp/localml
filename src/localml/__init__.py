@@ -17,7 +17,7 @@ Public API::
 
 from __future__ import annotations
 
-from . import datasets, huggingface, jax, mlx, prompts, torch
+from . import datasets, evals, huggingface, jax, mlx, prompts, torch
 from .config import Config, configure
 from .exceptions import (
     ArtifactUploadError,
@@ -61,6 +61,7 @@ __all__ = [
     "configure",
     "datasets",
     "deploy",
+    "evals",
     "evaluate",
     "huggingface",
     "jax",

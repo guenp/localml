@@ -132,6 +132,70 @@ def test_predict_rejects_prompt_needing_missing_column(sdk, tmp_path):
         ml.predict(model=version, dataset=dataset, prompt=prompt, provider="echo")
 
 
+def _predicted_triple(tmp_path, *, name: str):
+    """Register a model/dataset/prompt triple and run an echo prediction to completion."""
+    import json
+
+    # The echo provider returns the rendered prompt, so the first row's expected matches.
+    rows = [{"question": "a", "expected": "Q: a\nA:"}, {"question": "b", "expected": "nope"}]
+    dataset_file = tmp_path / f"{name}.jsonl"
+    dataset_file.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    dataset = ml.datasets.register(
+        project="local", name=f"{name}-ds", artifact_uri=str(dataset_file), rows=rows
+    )
+    prompt = ml.prompts.register(name=f"{name}-qa", template="Q: {question}\nA:")
+    version = ml.register_model(f"{name}-m", artifact_uri="file:///tmp/m", framework="mlx")
+    job = ml.predict(model=version, dataset=dataset, prompt=prompt, provider="echo")
+    job.wait(timeout=30)
+    return version, dataset, prompt, job
+
+
+def test_evals_end_to_end(sdk, tmp_path, monkeypatch):
+    """Full Phase 3 M3 loop: score a completed prediction, mixing built-in + custom metrics."""
+    _, _, _, prediction = _predicted_triple(tmp_path, name="evals-e2e")
+
+    # Custom metrics run client-side over the stored results and persist with the job.
+    monkeypatch.setitem(
+        ml.evals._LOCAL_METRICS,
+        "half_of_total",
+        lambda records, config: len(records) / 2,
+    )
+    job = ml.evals.run(prediction, ["exact_match", "error_rate", "half_of_total"])
+    job.wait(timeout=30)
+
+    assert job.status == "completed"
+    assert job.prediction_job_id == prediction.id
+    assert job.metrics == {"exact_match": 0.5, "error_rate": 0.0, "half_of_total": 1.0}
+    assert job.report_uri
+    assert job.error is None
+
+
+def test_evals_run_rejects_unknown_prediction(sdk):
+    with pytest.raises(LocalMLError, match="not found"):
+        ml.evals.run("ghost-prediction", ["error_rate"])
+
+
+def test_evaluate_predict_then_eval_sugar(sdk, tmp_path):
+    """`ml.evaluate(..., prompt=...)` is predict-then-eval sugar over stored results."""
+    import json
+
+    rows = [{"question": "a", "expected": "Q: a\nA:"}]
+    dataset_file = tmp_path / "sugar.jsonl"
+    dataset_file.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    dataset = ml.datasets.register(
+        project="local", name="sugar-ds", artifact_uri=str(dataset_file), rows=rows
+    )
+    prompt = ml.prompts.register(name="sugar-qa", template="Q: {question}\nA:")
+    version = ml.register_model("sugar-m", artifact_uri="file:///tmp/m", framework="mlx")
+
+    job = ml.evaluate(
+        version, dataset, ["exact_match"], prompt=prompt, provider="echo", predict_timeout=30
+    )
+    assert job.prediction_job_id is not None
+    job.wait(timeout=30)
+    assert job.metrics == {"exact_match": 1.0}
+
+
 def test_evaluate_queues_job(sdk):
     version = ml.register_model("m", artifact_uri="file:///tmp/m", framework="mlx")
     job = ml.evaluate(model=version, dataset="evalset:v1", metrics=["accuracy"])

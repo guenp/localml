@@ -136,12 +136,15 @@ class PredictionJob:
 
 @dataclass
 class EvaluationJob:
-    """Background job that evaluates a model version against a dataset."""
+    """Background job that scores a completed prediction job's stored results."""
 
     id: str
-    model_version_id: str
+    model_version_id: str | None = None
+    prediction_job_id: str | None = None
     status: str = "queued"
     metrics: dict[str, float] | None = None
+    report_uri: str | None = None
+    error: str | None = None
     _client: Client | None = field(default=None, repr=False, compare=False)
 
     _TERMINAL = frozenset({"completed", "failed"})
@@ -151,8 +154,8 @@ class EvaluationJob:
         if self._client is None:
             return self
         latest = self._client.get_evaluation(self.id)
-        self.status = latest.status
-        self.metrics = latest.metrics
+        for name in ("status", "metrics", "report_uri", "error"):
+            setattr(self, name, getattr(latest, name))
         return self
 
     def wait(self, *, timeout: float = 600.0, poll_interval: float = 1.0) -> EvaluationJob:
@@ -174,7 +177,7 @@ class EvaluationJob:
                 f"evaluation {self.id} timed out (status={self.status})"
             ) from exc
         if status == "failed":
-            raise EvaluationFailedError(f"evaluation {self.id} failed")
+            raise EvaluationFailedError(f"evaluation {self.id} failed: {self.error}")
         return self
 
 

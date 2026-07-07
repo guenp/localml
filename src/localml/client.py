@@ -318,33 +318,43 @@ class Client:
     # -- evaluations -------------------------------------------------------------
 
     def create_evaluation(
-        self, model_version_id: str, dataset_uri: str, metrics: list[str]
+        self,
+        model_version_id: str | None = None,
+        dataset_uri: str | None = None,
+        metrics: list[str] | None = None,
+        *,
+        prediction: str | None = None,
+        config: dict[str, Any] | None = None,
+        client_metrics: dict[str, float] | None = None,
     ) -> EvaluationJob:
+        """Create an evaluation job: pass ``prediction`` (job id) or the legacy pair."""
         data = self._request(
             "POST",
             "/evaluations",
             idempotent=True,
             json={
+                "prediction": prediction,
+                "metrics": metrics or [],
+                "config": config or {},
+                "client_metrics": client_metrics or {},
                 "model_version_id": model_version_id,
                 "dataset_uri": dataset_uri,
-                "metrics": metrics,
             },
         )
-        return EvaluationJob(
-            id=data["id"],
-            model_version_id=data["model_version_id"],
-            status=data.get("status", "queued"),
-            metrics=data.get("metrics"),
-            _client=self,
-        )
+        return self._evaluation_from(data)
 
     def get_evaluation(self, job_id: str) -> EvaluationJob:
-        data = self._request("GET", f"/evaluations/{job_id}")
+        return self._evaluation_from(self._request("GET", f"/evaluations/{job_id}"))
+
+    def _evaluation_from(self, data: dict[str, Any]) -> EvaluationJob:
         return EvaluationJob(
             id=data["id"],
-            model_version_id=data["model_version_id"],
-            status=data["status"],
+            model_version_id=data.get("model_version_id"),
+            prediction_job_id=data.get("prediction_job_id"),
+            status=data.get("status", "queued"),
             metrics=data.get("metrics"),
+            report_uri=data.get("report_uri"),
+            error=data.get("error"),
             _client=self,
         )
 

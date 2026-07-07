@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from . import evals
 from ._hashing import sha256_file
 from ._state import get_current_run
 from .adapters import base
@@ -99,14 +100,34 @@ def predict(
 
 def evaluate(
     model: ModelVersion | str,
-    dataset: str,
+    dataset: Dataset | str,
     metrics: list[str],
+    *,
+    prompt: PromptVersion | str | None = None,
+    provider: str = "openai",
+    config: dict[str, Any] | None = None,
+    predict_timeout: float = 600.0,
 ) -> EvaluationJob:
-    """Queue an evaluation job for a model version against a dataset."""
+    """Evaluate a model on a dataset — predict-then-eval sugar.
+
+    With ``prompt`` this queues a prediction job (``ml.predict``), waits for it to complete
+    (up to ``predict_timeout`` seconds), then queues an evaluation over the stored results —
+    equivalent to ``ml.evals.run(ml.predict(...).wait(), metrics)``. ``config`` is shared:
+    generation parameters and ``batch_size`` go to the prediction; metric parameters
+    (``expected_field``, ``pattern``, ...) to the evaluation.
+
+    Without ``prompt`` it falls back to the legacy record-only evaluation shape (kept for
+    compatibility; those jobs have no stored results to score).
+    """
+    if prompt is not None:
+        job = predict(model=model, dataset=dataset, prompt=prompt, provider=provider, config=config)
+        job.wait(timeout=predict_timeout)
+        return evals.run(job, metrics, config=config)
     model_version_id = model.id if isinstance(model, ModelVersion) else model
+    dataset_uri = dataset.id if isinstance(dataset, Dataset) else dataset
     return get_client().create_evaluation(
         model_version_id=model_version_id,
-        dataset_uri=dataset,
+        dataset_uri=dataset_uri,
         metrics=metrics,
     )
 
