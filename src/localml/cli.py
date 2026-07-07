@@ -6,6 +6,8 @@ Thin wrapper over the control-plane client. Run ``localml --help`` for usage.
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,8 @@ app = typer.Typer(help="localml — local ML experimentation platform CLI", no_a
 
 projects_app = typer.Typer(help="Manage projects")
 runs_app = typer.Typer(help="Inspect runs")
-models_app = typer.Typer(help="Inspect model versions")
+models_app = typer.Typer(help="Inspect and promote model versions")
+datasets_app = typer.Typer(help="Register and inspect datasets")
 prompts_app = typer.Typer(help="Manage versioned prompt templates")
 predictions_app = typer.Typer(help="Run and inspect prediction jobs")
 evals_app = typer.Typer(help="Score stored prediction results with registered metrics")
@@ -26,6 +29,7 @@ deployments_app = typer.Typer(help="Deploy models and route inference through th
 app.add_typer(projects_app, name="projects")
 app.add_typer(runs_app, name="runs")
 app.add_typer(models_app, name="models")
+app.add_typer(datasets_app, name="datasets")
 app.add_typer(prompts_app, name="prompts")
 app.add_typer(predictions_app, name="predictions")
 app.add_typer(evals_app, name="evals")
@@ -34,6 +38,33 @@ app.add_typer(deployments_app, name="deployments")
 
 def _echo(obj: Any) -> None:
     typer.echo(json.dumps(obj, indent=2, default=str))
+
+
+def _load_json(value: str, flag: str) -> Any:
+    """Parse a JSON CLI option, raising a Typer error on malformed input."""
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter(f"{flag} must be valid JSON: {exc}") from exc
+
+
+@app.command()
+def version() -> None:
+    """Print the installed localml version."""
+    from . import __version__
+
+    _echo({"localml": __version__})
+
+
+@app.command()
+def dashboard(port: int = typer.Option(8501, help="Port for the Streamlit server")) -> None:
+    """Launch the Streamlit dashboard (requires the `dashboard` extra)."""
+    if shutil.which("streamlit") is None:
+        raise typer.BadParameter(
+            "streamlit is not installed; install the extra: uv pip install 'localml[dashboard]'"
+        )
+    app_file = Path(__file__).with_name("dashboard.py")
+    subprocess.run(["streamlit", "run", str(app_file), "--server.port", str(port)], check=True)
 
 
 @app.command()
@@ -55,6 +86,28 @@ def health() -> None:
     _echo(client._request("GET", "/health"))
 
 
+@projects_app.command("create")
+def projects_create(
+    name: str,
+    description: str = typer.Option(None, help="Optional project description"),
+) -> None:
+    """Create a project."""
+    _echo(
+        get_client()._request(
+            "POST",
+            "/projects",
+            idempotent=True,
+            json={"name": name, "description": description},
+        )
+    )
+
+
+@projects_app.command("get")
+def projects_get(project_id: str) -> None:
+    """Fetch a project by id."""
+    _echo(get_client()._request("GET", f"/projects/{project_id}"))
+
+
 @runs_app.command("get")
 def runs_get(run_id: str) -> None:
     """Fetch a run by id."""
@@ -65,6 +118,72 @@ def runs_get(run_id: str) -> None:
 def models_get(name: str) -> None:
     """Fetch a model and its versions by name."""
     _echo(get_client()._request("GET", f"/models/{name}"))
+
+
+@models_app.command("version")
+def models_version(name: str, version: str) -> None:
+    """Fetch a single model version (id or numeric version)."""
+    _echo(get_client()._request("GET", f"/models/{name}/versions/{version}"))
+
+
+@models_app.command("promote")
+def models_promote(
+    name: str,
+    version: str,
+    to: str = typer.Option(..., "--to", help="Target lifecycle status (e.g. staging, production)"),
+) -> None:
+    """Promote a model version to a new lifecycle status."""
+    _echo(
+        get_client()._request(
+            "POST",
+            f"/models/{name}/versions/{version}/promote",
+            json={"target_status": to},
+        )
+    )
+
+
+@datasets_app.command("register")
+def datasets_register(
+    name: str,
+    artifact_uri: str = typer.Option(..., help="Object-store URI for the dataset artifact"),
+    project: str = typer.Option("local", help="Owning project"),
+    rows_file: str = typer.Option(
+        None, "--file", help="JSONL file of rows (assigns stable example_ids)"
+    ),
+    version: str = typer.Option(None, help="Explicit version (default: auto-increment)"),
+) -> None:
+    """Register a dataset version, optionally with rows from a JSONL file."""
+    rows: list[dict[str, Any]] | None = None
+    if rows_file is not None:
+        rows = [
+            json.loads(line) for line in Path(rows_file).read_text().splitlines() if line.strip()
+        ]
+    _echo(
+        get_client()._request(
+            "POST",
+            "/datasets",
+            idempotent=True,
+            json={
+                "project": project,
+                "name": name,
+                "artifact_uri": artifact_uri,
+                "version": version,
+                "rows": rows,
+            },
+        )
+    )
+
+
+@datasets_app.command("get")
+def datasets_get(name: str) -> None:
+    """Fetch all versions of a dataset by name."""
+    _echo(get_client()._request("GET", f"/datasets/{name}"))
+
+
+@datasets_app.command("version")
+def datasets_version(name: str, version: str) -> None:
+    """Fetch a single dataset version."""
+    _echo(get_client()._request("GET", f"/datasets/{name}/versions/{version}"))
 
 
 @prompts_app.command("register")
@@ -125,10 +244,7 @@ def predictions_run(
     config: str = typer.Option("{}", help="Inference config as JSON (batch_size, model, ...)"),
 ) -> None:
     """Queue a prediction job for a model + dataset + prompt triple."""
-    try:
-        config_obj = json.loads(config)
-    except json.JSONDecodeError as exc:
-        raise typer.BadParameter(f"--config must be valid JSON: {exc}") from exc
+    config_obj = _load_json(config, "--config")
     _echo(
         get_client()._request(
             "POST",
@@ -166,10 +282,7 @@ def evals_run(
     config: str = typer.Option("{}", help="Metric config as JSON (expected_field, pattern, ...)"),
 ) -> None:
     """Queue an evaluation of a completed prediction job's stored results."""
-    try:
-        config_obj = json.loads(config)
-    except json.JSONDecodeError as exc:
-        raise typer.BadParameter(f"--config must be valid JSON: {exc}") from exc
+    config_obj = _load_json(config, "--config")
     _echo(
         get_client()._request(
             "POST",
@@ -207,10 +320,7 @@ def deployments_create(
     config: str = typer.Option("{}", help="Backend config as JSON (base_url, model, api_key)"),
 ) -> None:
     """Deploy a model version behind the OpenAI-compatible serving proxy."""
-    try:
-        config_obj = json.loads(config)
-    except json.JSONDecodeError as exc:
-        raise typer.BadParameter(f"--config must be valid JSON: {exc}") from exc
+    config_obj = _load_json(config, "--config")
     _echo(
         get_client()._request(
             "POST",
@@ -229,12 +339,7 @@ def deployments_swap(
     config: str = typer.Option(None, help="Backend config overrides as JSON (merged)"),
 ) -> None:
     """Hot swap a deployment's model version, target, or backend config."""
-    config_obj = None
-    if config is not None:
-        try:
-            config_obj = json.loads(config)
-        except json.JSONDecodeError as exc:
-            raise typer.BadParameter(f"--config must be valid JSON: {exc}") from exc
+    config_obj = None if config is None else _load_json(config, "--config")
     _echo(
         get_client()._request(
             "PATCH",
@@ -255,6 +360,18 @@ def deployments_predict(
             "POST", f"/deployments/{deployment_id}/predict", json={"prompt": prompt}
         )
     )
+
+
+@deployments_app.command("get")
+def deployments_get(deployment_id: str) -> None:
+    """Fetch a deployment by id."""
+    _echo(get_client()._request("GET", f"/deployments/{deployment_id}"))
+
+
+@deployments_app.command("delete")
+def deployments_delete(deployment_id: str) -> None:
+    """Mark a deployment inactive."""
+    _echo(get_client()._request("DELETE", f"/deployments/{deployment_id}"))
 
 
 if __name__ == "__main__":
