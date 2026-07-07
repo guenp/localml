@@ -377,27 +377,68 @@ class Client:
 
     # -- deployments -------------------------------------------------------------
 
-    def create_deployment(self, model_version_id: str, target: str) -> Deployment:
+    def create_deployment(
+        self, model_version_id: str, target: str, config: dict[str, Any] | None = None
+    ) -> Deployment:
         try:
             data = self._request(
                 "POST",
                 "/deployments",
                 idempotent=True,
-                json={"model_version_id": model_version_id, "target": target},
+                json={
+                    "model_version_id": model_version_id,
+                    "target": target,
+                    "config": config or {},
+                },
             )
         except ValidationError as exc:
             raise DeploymentError(str(exc)) from exc
+        return self._deployment_from(data)
+
+    def update_deployment(
+        self,
+        deployment_id: str,
+        *,
+        model_version_id: str | None = None,
+        target: str | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> Deployment:
+        try:
+            data = self._request(
+                "PATCH",
+                f"/deployments/{deployment_id}",
+                json={
+                    "model_version_id": model_version_id,
+                    "target": target,
+                    "config": config,
+                },
+            )
+        except ValidationError as exc:
+            raise DeploymentError(str(exc)) from exc
+        return self._deployment_from(data)
+
+    def _deployment_from(self, data: dict[str, Any]) -> Deployment:
         return Deployment(
             id=data["id"],
             model_version_id=data["model_version_id"],
             target=data["target"],
             status=data.get("status", "active"),
             endpoint_url=data.get("endpoint_url"),
+            config=data.get("config", {}),
             _client=self,
         )
 
-    def predict(self, deployment_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def deployment_predict(self, deployment_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", f"/deployments/{deployment_id}/predict", json=payload)
+
+    def deployment_chat(
+        self, deployment_id: str, messages: list[dict[str, Any]], **params: Any
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/deployments/{deployment_id}/v1/chat/completions",
+            json={"messages": messages, "stream": False, **params},
+        )
 
     def close(self) -> None:
         self._http.close()

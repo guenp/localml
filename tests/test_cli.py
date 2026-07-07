@@ -171,6 +171,40 @@ def test_evals_status(stub):
     assert stub.requests[0][:2] == ("GET", "/evaluations/e1")
 
 
+def test_deployments_create(stub):
+    result = runner.invoke(
+        cli.app,
+        ["deployments", "create", "m:v1", "--target", "local", "--config", '{"model": "llama3"}'],
+    )
+    assert result.exit_code == 0
+    method, path, kwargs = stub.requests[0]
+    assert (method, path) == ("POST", "/deployments")
+    assert kwargs["json"] == {
+        "model_version_id": "m:v1",
+        "target": "local",
+        "config": {"model": "llama3"},
+    }
+    assert kwargs["idempotent"] is True
+
+
+def test_deployments_swap(stub):
+    result = runner.invoke(
+        cli.app, ["deployments", "swap", "dep-1", "--model", "m:v2", "--config", '{"model": "b"}']
+    )
+    assert result.exit_code == 0
+    method, path, kwargs = stub.requests[0]
+    assert (method, path) == ("PATCH", "/deployments/dep-1")
+    assert kwargs["json"] == {"model_version_id": "m:v2", "target": None, "config": {"model": "b"}}
+
+
+def test_deployments_predict(stub):
+    result = runner.invoke(cli.app, ["deployments", "predict", "dep-1", "2+2?"])
+    assert result.exit_code == 0
+    method, path, kwargs = stub.requests[0]
+    assert (method, path) == ("POST", "/deployments/dep-1/predict")
+    assert kwargs["json"] == {"prompt": "2+2?"}
+
+
 def test_compare_command(stub):
     result = runner.invoke(cli.app, ["compare", "a1", "b1", "--max-examples", "5"])
     assert result.exit_code == 0

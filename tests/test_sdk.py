@@ -25,6 +25,20 @@ def test_evals_register_metric_validates(monkeypatch):
         ml.evals.register_metric("bad", "not callable")  # type: ignore[arg-type]
 
 
+def test_providers_register_and_config(monkeypatch):
+    monkeypatch.setattr(ml.providers, "_PROVIDERS", {})
+    ml.providers.register("ollama", base_url="http://box:11434", model="llama3")
+    assert ml.providers.config_for("ollama") == {
+        "base_url": "http://box:11434",
+        "model": "llama3",
+    }
+    # Unset fields are omitted; only base_url is required.
+    ml.providers.register("bare", base_url="http://x:8000")
+    assert ml.providers.config_for("bare") == {"base_url": "http://x:8000"}
+    with pytest.raises(KeyError):
+        ml.providers.get("nope")
+
+
 def test_exception_hierarchy():
     assert issubclass(EvaluationFailedError, LocalMLError)
 

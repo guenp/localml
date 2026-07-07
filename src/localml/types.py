@@ -201,17 +201,49 @@ class Comparison:
 
 @dataclass
 class Deployment:
-    """Active or historical serving configuration for a model version."""
+    """Active or historical serving configuration for a model version.
+
+    ``status`` is ``active`` when the serving backend answered a health check, ``degraded``
+    when it didn't (the proxy resolves the backend per request, so a backend that comes up
+    later starts working without redeploying), or ``inactive`` after deletion.
+    """
 
     id: str
     model_version_id: str
     target: str = "local"
     status: str = "active"
     endpoint_url: str | None = None
+    config: dict[str, Any] = field(default_factory=dict)
     _client: Client | None = field(default=None, repr=False, compare=False)
 
-    def predict(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Send a prediction request to the deployed model's endpoint."""
+    def _bound(self) -> Client:
         if self._client is None:
             raise RuntimeError("deployment is not bound to a client")
-        return self._client.predict(self.id, payload)
+        return self._client
+
+    def predict(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Round-trip a non-streaming request through the proxy (``prompt`` or ``messages``)."""
+        return self._bound().deployment_predict(self.id, payload)
+
+    def chat(self, messages: list[dict[str, Any]], **params: Any) -> dict[str, Any]:
+        """Send an OpenAI chat-completions request through the deployment's proxy."""
+        return self._bound().deployment_chat(self.id, messages, **params)
+
+    def swap(
+        self,
+        *,
+        model: ModelVersion | str | None = None,
+        target: str | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> Deployment:
+        """Hot swap: repoint this deployment's model version, target, or backend config.
+
+        Refreshes this handle in place from the server's response.
+        """
+        model_version_id = model.id if isinstance(model, ModelVersion) else model
+        latest = self._bound().update_deployment(
+            self.id, model_version_id=model_version_id, target=target, config=config
+        )
+        for name in ("model_version_id", "target", "status", "endpoint_url", "config"):
+            setattr(self, name, getattr(latest, name))
+        return self

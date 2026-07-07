@@ -22,12 +22,14 @@ models_app = typer.Typer(help="Inspect model versions")
 prompts_app = typer.Typer(help="Manage versioned prompt templates")
 predictions_app = typer.Typer(help="Run and inspect prediction jobs")
 evals_app = typer.Typer(help="Score stored prediction results with registered metrics")
+deployments_app = typer.Typer(help="Deploy models and route inference through the serving proxy")
 app.add_typer(projects_app, name="projects")
 app.add_typer(runs_app, name="runs")
 app.add_typer(models_app, name="models")
 app.add_typer(prompts_app, name="prompts")
 app.add_typer(predictions_app, name="predictions")
 app.add_typer(evals_app, name="evals")
+app.add_typer(deployments_app, name="deployments")
 
 
 def _echo(obj: Any) -> None:
@@ -194,6 +196,63 @@ def compare(
     _echo(
         get_client()._request(
             "GET", "/compare", params={"a": a, "b": b, "max_examples": max_examples}
+        )
+    )
+
+
+@deployments_app.command("create")
+def deployments_create(
+    model: str = typer.Argument(help="Model version id or name:version"),
+    target: str = typer.Option("local", help="Serving target"),
+    config: str = typer.Option("{}", help="Backend config as JSON (base_url, model, api_key)"),
+) -> None:
+    """Deploy a model version behind the OpenAI-compatible serving proxy."""
+    try:
+        config_obj = json.loads(config)
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter(f"--config must be valid JSON: {exc}") from exc
+    _echo(
+        get_client()._request(
+            "POST",
+            "/deployments",
+            idempotent=True,
+            json={"model_version_id": model, "target": target, "config": config_obj},
+        )
+    )
+
+
+@deployments_app.command("swap")
+def deployments_swap(
+    deployment_id: str,
+    model: str = typer.Option(None, help="New model version id or name:version"),
+    target: str = typer.Option(None, help="New serving target"),
+    config: str = typer.Option(None, help="Backend config overrides as JSON (merged)"),
+) -> None:
+    """Hot swap a deployment's model version, target, or backend config."""
+    config_obj = None
+    if config is not None:
+        try:
+            config_obj = json.loads(config)
+        except json.JSONDecodeError as exc:
+            raise typer.BadParameter(f"--config must be valid JSON: {exc}") from exc
+    _echo(
+        get_client()._request(
+            "PATCH",
+            f"/deployments/{deployment_id}",
+            json={"model_version_id": model, "target": target, "config": config_obj},
+        )
+    )
+
+
+@deployments_app.command("predict")
+def deployments_predict(
+    deployment_id: str,
+    prompt: str = typer.Argument(help="Prompt text to send to the deployed model"),
+) -> None:
+    """Round-trip a prompt through the deployment's serving proxy."""
+    _echo(
+        get_client()._request(
+            "POST", f"/deployments/{deployment_id}/predict", json={"prompt": prompt}
         )
     )
 

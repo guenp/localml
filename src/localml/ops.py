@@ -157,7 +157,27 @@ def compare(
     return get_client().compare(ref_a, ref_b, max_examples=max_examples)
 
 
-def deploy(model: ModelVersion | str, target: str = "local") -> Deployment:
-    """Deploy a model version to a serving target (currently ``local``)."""
+def deploy(
+    model: ModelVersion | str,
+    target: str = "local",
+    *,
+    provider: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> Deployment:
+    """Deploy a model version to a serving target.
+
+    ``provider`` names a backend registered with :func:`ml.providers.register`; its
+    connection details (``base_url``/``model``/``api_key``) are merged into ``config``.
+    ``config`` carries backend overrides resolved at proxy time; when neither is given the
+    target's registered backend (or the server's serving URL) is used. The returned
+    deployment is ``active`` when the backend answered a health check, ``degraded`` otherwise.
+    """
+    from . import providers
+
     model_version_id = model.id if isinstance(model, ModelVersion) else model
-    return get_client().create_deployment(model_version_id=model_version_id, target=target)
+    merged = dict(config or {})
+    if provider is not None:
+        merged = {**providers.config_for(provider), **merged}
+    return get_client().create_deployment(
+        model_version_id=model_version_id, target=target, config=merged
+    )

@@ -236,6 +236,63 @@ def test_deploy_rejects_non_deployable_model(sdk):
         ml.deploy(model=version, target="local")
 
 
+def _deployable_version(sdk, name: str):
+    version = ml.register_model(name, artifact_uri="file:///tmp/m", framework="mlx")
+    for target in ("candidate", "staging"):
+        sdk._request("POST", f"/models/{name}/versions/1/promote", json={"target_status": target})
+    return version
+
+
+def test_deploy_and_chat_round_trip(sdk, monkeypatch):
+    """Deploy through the proxy, register a custom provider, and round-trip a chat request."""
+    import json as _json
+
+    import httpx
+    from app import serving
+
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = _json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "pong"}}]})
+
+    # The live server runs in-process, so patching the module object is visible to it.
+    monkeypatch.setattr(serving, "_transport", httpx.MockTransport(handler))
+
+    version = _deployable_version(sdk, "served")
+    ml.providers.register("my-ollama", base_url="http://gpu-box:11434", model="llama3")
+    dep = ml.deploy(version, target="local", provider="my-ollama")
+    assert dep.config["base_url"] == "http://gpu-box:11434"
+    assert dep.status == "active"  # health check is stubbed True in tests
+
+    reply = dep.chat([{"role": "user", "content": "ping"}])
+    assert reply["choices"][0]["message"]["content"] == "pong"
+    assert captured["url"].endswith("/v1/chat/completions")
+    assert captured["body"]["model"] == "llama3"  # from the registered provider
+
+    # predict() sugar wraps the prompt.
+    dep.predict({"prompt": "hi"})
+    assert captured["body"]["messages"] == [{"role": "user", "content": "hi"}]
+
+
+def test_deployment_hot_swap(sdk, monkeypatch):
+    import httpx
+    from app import serving
+
+    monkeypatch.setattr(
+        serving, "_transport", httpx.MockTransport(lambda r: httpx.Response(200, json={"ok": True}))
+    )
+    v1 = _deployable_version(sdk, "swap-a")
+    v2 = _deployable_version(sdk, "swap-b")
+    dep = ml.deploy(v1, target="local", config={"model": "a"})
+
+    dep.swap(model=v2, config={"model": "b"})
+    assert dep.model_version_id == v2.id
+    assert dep.config["model"] == "b"
+    assert dep.status == "active"
+
+
 def test_client_create_and_get_run(sdk):
     r1 = sdk.create_run(project="local", config={"seed": 1})
     assert sdk.get_run(r1.id).id == r1.id
