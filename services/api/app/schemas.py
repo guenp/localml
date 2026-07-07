@@ -69,8 +69,18 @@ class CreateEvaluationRequest(BaseModel):
 
 
 class CreateDeploymentRequest(BaseModel):
-    model_version_id: str
+    model_version_id: str  # id or name:version
     target: str = "local"
+    # Backend overrides resolved at proxy time: base_url, model, api_key.
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class UpdateDeploymentRequest(BaseModel):
+    """Hot swap: repoint the deployment's model version, target, or backend config."""
+
+    model_version_id: str | None = None  # id or name:version
+    target: str | None = None
+    config: dict[str, Any] | None = None  # merged over the existing config
 
 
 class RegisterDatasetRequest(BaseModel):
@@ -174,6 +184,7 @@ class DeploymentResponse(BaseModel):
     target: str
     status: str
     endpoint_url: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class DatasetResponse(BaseModel):

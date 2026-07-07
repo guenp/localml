@@ -38,7 +38,7 @@ def offline_integrations(monkeypatch, tmp_path):  # type: ignore[no-untyped-def]
     """
     from app import evaluation, prediction
     from app.config import settings
-    from app.routers import datasets, models, runs
+    from app.routers import datasets, deployments, models, runs
 
     monkeypatch.setattr(runs, "create_mlflow_run", lambda *a, **k: None)
     monkeypatch.setattr(runs, "create_presigned_put_url", lambda *a, **k: None)
@@ -49,6 +49,9 @@ def offline_integrations(monkeypatch, tmp_path):  # type: ignore[no-untyped-def]
     monkeypatch.setattr(evaluation, "upload_object", lambda *a, **k: None)
     monkeypatch.setattr(evaluation, "log_mlflow_metrics", lambda *a, **k: None)
     monkeypatch.setattr(evaluation, "_RETRY_BACKOFF", 0.0)
+    # No serving backend in unit tests; deployments health-check as reachable by default.
+    # Serving-proxy tests inject an httpx.MockTransport via app.serving._transport instead.
+    monkeypatch.setattr(deployments, "check_backend_health", lambda dep: True)
     # Keep prediction-result files inside the test sandbox, and don't spawn background
     # threads against the TestClient's shared in-memory SQLite connection. The ``sdk``
     # fixture re-enables inline jobs — its file-backed database is thread-safe.

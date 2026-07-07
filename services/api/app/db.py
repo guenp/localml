@@ -229,10 +229,15 @@ class Deployment(Base):
     target: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, index=True)
     endpoint_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Per-deployment backend overrides (base_url / model / api_key), resolved at proxy time —
+    # hot model swap is a PATCH that updates these (or the target); no process restart.
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+
+    model_version: Mapped[ModelVersion] = relationship()
 
 
 class AuditEvent(Base):
