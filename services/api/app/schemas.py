@@ -56,10 +56,16 @@ class PromoteRequest(BaseModel):
 
 
 class CreateEvaluationRequest(BaseModel):
-    model_version_id: str
-    dataset_uri: str
-    metrics: list[str]
+    # Phase 3 shape: score a completed prediction job's stored results.
+    prediction: str | None = None  # prediction-job id
+    metrics: list[str] = Field(default_factory=list)
     config: dict[str, Any] = Field(default_factory=dict)
+    # Custom metrics computed client-side by the SDK (the server can't run user code);
+    # persisted with the job alongside the worker-computed built-ins.
+    client_metrics: dict[str, float] = Field(default_factory=dict)
+    # Legacy pre-M3 shape (record-only; kept for compatibility).
+    model_version_id: str | None = None
+    dataset_uri: str | None = None
 
 
 class CreateDeploymentRequest(BaseModel):
@@ -134,10 +140,12 @@ class ModelResponse(BaseModel):
 
 class EvaluationJobResponse(BaseModel):
     id: str
-    model_version_id: str
+    prediction_job_id: str | None = None
+    model_version_id: str | None = None
     status: str
     metrics: dict[str, float] | None = None
     report_uri: str | None = None
+    error: str | None = None
 
 
 class PredictionJobResponse(BaseModel):

@@ -1,9 +1,9 @@
-"""Background worker: consumes prediction (and evaluation) jobs from Redis.
+"""Background worker: consumes prediction and evaluation jobs from Redis.
 
 Runs from the same image/codebase as the API (``python -m app.worker`` in Compose) so it
-shares the ORM, templating, providers, and config. Prediction jobs execute the real loop in
-:mod:`app.prediction`; evaluation jobs remain a placeholder until Phase 3 M3 rebuilds them on
-top of stored prediction results.
+shares the ORM, templating, providers, metrics, and config. Prediction jobs execute the
+inference loop in :mod:`app.prediction`; evaluation jobs score stored prediction results in
+:mod:`app.evaluation`.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import time
 from typing import Any
 
 from .config import settings
+from .evaluation import run_evaluation_job
 from .prediction import run_prediction_job
 from .queue import EVAL_QUEUE, PREDICTION_QUEUE
 from .session import SessionLocal, init_db
@@ -31,8 +32,12 @@ def handle_prediction(payload: dict[str, Any]) -> None:
 
 
 def handle_evaluation(payload: dict[str, Any]) -> None:
-    # Placeholder until Phase 3 M3: evaluations will score stored prediction results.
-    log.info("picked up evaluation job %s (scoring lands in Phase 3 M3)", payload.get("job_id"))
+    job_id = payload.get("job_id")
+    if not job_id:
+        log.warning("dropping evaluation payload without job_id")
+        return
+    log.info("picked up evaluation job %s", job_id)
+    run_evaluation_job(SessionLocal, str(job_id))
 
 
 _HANDLERS = {

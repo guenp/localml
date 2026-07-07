@@ -36,7 +36,7 @@ def offline_integrations(monkeypatch, tmp_path):  # type: ignore[no-untyped-def]
     the suite stays fast and hermetic; real MLflow/MinIO wiring is covered by the Compose
     integration stack (roadmap Phase 6).
     """
-    from app import prediction
+    from app import evaluation, prediction
     from app.config import settings
     from app.routers import datasets, models, runs
 
@@ -46,6 +46,9 @@ def offline_integrations(monkeypatch, tmp_path):  # type: ignore[no-untyped-def]
     monkeypatch.setattr(datasets, "create_presigned_put_url", lambda *a, **k: None)
     monkeypatch.setattr(prediction, "upload_object", lambda *a, **k: None)
     monkeypatch.setattr(prediction, "download_object", lambda *a, **k: False)
+    monkeypatch.setattr(evaluation, "upload_object", lambda *a, **k: None)
+    monkeypatch.setattr(evaluation, "log_mlflow_metrics", lambda *a, **k: None)
+    monkeypatch.setattr(evaluation, "_RETRY_BACKOFF", 0.0)
     # Keep prediction-result files inside the test sandbox, and don't spawn background
     # threads against the TestClient's shared in-memory SQLite connection. The ``sdk``
     # fixture re-enables inline jobs — its file-backed database is thread-safe.
