@@ -11,9 +11,10 @@ storage, evaluation jobs, and local model serving.
 > metadata, lifecycle, idempotency, dataset registry), the Python SDK (Phase 2 — real HTTPX
 > client, run tracking, artifact checksums, framework-adapter packaging), and the full
 > predict → evaluate → compare loop (Phase 3 — prompt registry, worker-run prediction jobs,
-> evaluation jobs with a pluggable metric registry, comparison reports) plus the local
-> OpenAI-compatible serving proxy with hot model swap (Phase 4) are implemented and tested.
-> Interfaces/DX and quality/ops (Phases 5–6) are next. See
+> evaluation jobs with a pluggable metric registry, comparison reports), the local
+> OpenAI-compatible serving proxy with hot model swap (Phase 4), and the interfaces/DX layer
+> (Phase 5 — full CLI, an optional Streamlit dashboard, quickstart notebooks, and a checked-in
+> OpenAPI schema) are implemented and tested. Quality/ops (Phase 6) is next. See
 > [`ROADMAP.md`](./ROADMAP.md) for status and [`docs/design.md`](./docs/design.md) for the full
 > software design document.
 
@@ -120,10 +121,16 @@ with ml.start_run(project="local", config={"model": "tiny-llm"}) as run:
 
 ```bash
 localml --help
+localml version
 localml health
 localml config --api-url http://localhost:8000
+localml projects create <name> --description "..."
 localml runs get <run_id>
 localml models get <name>
+localml models version <name> <version>
+localml models promote <name> <version> --to production
+localml datasets register <name> --artifact-uri datasets/eval.jsonl --file rows.jsonl
+localml datasets get <name>
 localml prompts register <name> --template "..."   # or --file prompt.txt
 localml prompts render <name> <version> --var key=value
 localml predictions run <model:v> <dataset:v> <prompt:v> --config '{"batch_size": 4}'
@@ -135,7 +142,24 @@ localml compare <job_a> <job_b>
 localml deployments create <model:v> --config '{"base_url": "http://localhost:11434"}'
 localml deployments swap <deployment_id> --model <model:v>
 localml deployments predict <deployment_id> "Explain model registries simply."
+localml deployments get <deployment_id>
 ```
+
+### Dashboard & notebooks
+
+An optional Streamlit dashboard (runs, prediction jobs, evaluations, comparison, and a
+deploy/inference panel) ships behind the `dashboard` extra:
+
+```bash
+uv pip install 'localml[dashboard]'
+localml dashboard          # streamlit run, points at the configured control plane
+```
+
+Two runnable quickstarts live in [`notebooks/`](./notebooks): `quickstart.ipynb` (a full SDK
+tour) and `predict_eval_loop.ipynb` (register two prompt versions, predict with both, evaluate,
+and compare to pick the winner). The control plane's OpenAPI schema is generated and checked in
+at [`docs/openapi.json`](./docs/openapi.json) (regenerate with `uv run python
+scripts/export_openapi.py`).
 
 ## Prompt registry
 
